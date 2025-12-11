@@ -204,13 +204,17 @@ export type AllPipesProgressCallback = (
 // Fetch all cards from a phase with pagination
 async function fetchAllCardsFromPhase(
   token: string,
-  phaseId: string
+  phaseId: string,
+  signal?: AbortSignal
 ): Promise<PipefyCard[]> {
   const allCards: PipefyCard[] = [];
   let hasNextPage = true;
   let cursor: string | null = null;
 
   while (hasNextPage) {
+    if (signal?.aborted) {
+      throw new DOMException('Busca cancelada', 'AbortError');
+    }
     const query = `
       query($phaseId: ID!, $after: String) {
         phase(id: $phaseId) {
@@ -264,7 +268,8 @@ export async function searchCardsByAssignee(
   token: string,
   pipeId: string,
   email: string,
-  onProgress?: SearchProgressCallback
+  onProgress?: SearchProgressCallback,
+  signal?: AbortSignal
 ): Promise<PipefyCard[]> {
   // First, get all phases from the pipe
   const phasesQuery = `
@@ -298,12 +303,16 @@ export async function searchCardsByAssignee(
 
   // Fetch cards from each active phase with pagination
   for (let i = 0; i < activePhases.length; i++) {
+    if (signal?.aborted) {
+      throw new DOMException('Busca cancelada', 'AbortError');
+    }
+    
     const phase = activePhases[i];
     
     // Report progress
     onProgress?.(i + 1, totalPhases, phase.name, allCards.length);
 
-    const phaseCards = await fetchAllCardsFromPhase(token, phase.id);
+    const phaseCards = await fetchAllCardsFromPhase(token, phase.id, signal);
     allCards.push(...phaseCards);
   }
 
@@ -321,11 +330,16 @@ export async function searchCardsInAllPipes(
   token: string,
   pipes: PipefyPipe[],
   email: string,
-  onProgress?: AllPipesProgressCallback
+  onProgress?: AllPipesProgressCallback,
+  signal?: AbortSignal
 ): Promise<PipefyCard[]> {
   const allCards: PipefyCard[] = [];
 
   for (let pipeIndex = 0; pipeIndex < pipes.length; pipeIndex++) {
+    if (signal?.aborted) {
+      throw new DOMException('Busca cancelada', 'AbortError');
+    }
+    
     const pipe = pipes[pipeIndex];
 
     const pipeCards = await searchCardsByAssignee(
@@ -342,9 +356,9 @@ export async function searchCardsInAllPipes(
           phaseName,
           allCards.length + cardsFound
         );
-      }
+      },
+      signal
     );
-
     // Add pipe name to each card
     const cardsWithPipe = pipeCards.map(card => ({ ...card, pipeName: pipe.name }));
     allCards.push(...cardsWithPipe);
