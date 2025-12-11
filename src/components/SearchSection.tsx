@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, RefreshCw, Loader2 } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Search, RefreshCw, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -47,6 +47,7 @@ export function SearchSection({
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleRefreshPipes = async () => {
     setIsRefreshing(true);
@@ -55,8 +56,18 @@ export function SearchSection({
     toast.success('Lista de pipes atualizada!');
   };
 
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
   const handleSearch = async () => {
     if (!token || !selectedPipeId || !selectedFromUser) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     setIsSearching(true);
     setSearchProgress(null);
@@ -73,7 +84,8 @@ export function SearchSection({
           selectedFromUser.user.email,
           (currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound });
-          }
+          },
+          controller.signal
         );
         resultPipeName = 'Todos os pipes';
       } else {
@@ -84,7 +96,8 @@ export function SearchSection({
           selectedFromUser.user.email,
           (currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
-          }
+          },
+          controller.signal
         );
         resultPipeName = pipes.find(p => p.id === selectedPipeId)?.name || 'Pipe';
       }
@@ -97,11 +110,16 @@ export function SearchSection({
         toast.success(`${cards.length} card(s) encontrado(s)!`);
       }
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        toast.info('Busca cancelada');
+        return;
+      }
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar cards');
       onCardsFound([], '');
     } finally {
       setIsSearching(false);
       setSearchProgress(null);
+      abortControllerRef.current = null;
     }
   };
 
@@ -180,16 +198,27 @@ export function SearchSection({
         {/* Search Progress */}
         {isSearching && searchProgress && (
           <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between items-center text-sm">
               <span className="text-muted-foreground">
                 {searchProgress.currentPipe && searchProgress.totalPipes && (
                   <span className="font-medium">Pipe {searchProgress.currentPipe}/{searchProgress.totalPipes} • </span>
                 )}
                 Fase {searchProgress.currentPhase}/{searchProgress.totalPhases}
               </span>
-              <span className="text-muted-foreground">
-                {searchProgress.cardsFound} cards encontrados
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">
+                  {searchProgress.cardsFound} cards
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancel}
+                  className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancelar
+                </Button>
+              </div>
             </div>
             <Progress value={progressPercentage} className="h-2" />
             <div className="text-xs text-muted-foreground truncate space-y-0.5">
