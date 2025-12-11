@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Key, ExternalLink, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Key, ExternalLink, CheckCircle, AlertCircle, Loader2, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { usePipefy } from '@/contexts/PipefyContext';
 export function ConfigScreen() {
   const { setToken, isLoading } = usePipefy();
   const [tokenInput, setTokenInput] = useState('');
+  const [orgIdInput, setOrgIdInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -19,11 +20,16 @@ export function ConfigScreen() {
       return;
     }
 
+    if (!orgIdInput.trim()) {
+      setError('Por favor, insira o ID da organização.');
+      return;
+    }
+
     setError(null);
     setSuccess(false);
     setTesting(true);
 
-    const result = await setToken(tokenInput.trim());
+    const result = await setToken(tokenInput.trim(), orgIdInput.trim());
 
     setTesting(false);
 
@@ -43,7 +49,7 @@ export function ConfigScreen() {
           </div>
           <CardTitle className="text-2xl">Configurar Acesso</CardTitle>
           <CardDescription className="text-base">
-            Insira seu Personal Access Token do Pipefy para começar
+            Insira seu Personal Access Token e ID da organização do Pipefy
           </CardDescription>
         </CardHeader>
 
@@ -66,6 +72,28 @@ export function ConfigScreen() {
             />
           </div>
 
+          <div className="space-y-2">
+            <label htmlFor="orgId" className="text-sm font-medium flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              ID da Organização
+            </label>
+            <Input
+              id="orgId"
+              type="text"
+              placeholder="Ex: 300549064"
+              value={orgIdInput}
+              onChange={(e) => {
+                setOrgIdInput(e.target.value);
+                setError(null);
+                setSuccess(false);
+              }}
+              className="input-field font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Você encontra o ID da organização na URL do Pipefy: app.pipefy.com/organizations/<strong>ID</strong>
+            </p>
+          </div>
+
           {error && (
             <Alert variant="destructive" className="animate-fade-in">
               <AlertCircle className="h-4 w-4" />
@@ -82,7 +110,7 @@ export function ConfigScreen() {
 
           <Button
             onClick={handleSaveToken}
-            disabled={!tokenInput.trim() || testing || isLoading}
+            disabled={!tokenInput.trim() || !orgIdInput.trim() || testing || isLoading}
             className="w-full btn-primary h-11"
           >
             {testing || isLoading ? (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Search, Loader2, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -10,141 +10,93 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent } from '@/components/ui/card';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { searchCardsByAssignee, PipefyCard } from '@/lib/pipefy-api';
-import { toast } from '@/hooks/use-toast';
+import { searchCardsByAssignee, PipefyCard, PipefyMember } from '@/lib/pipefy-api';
+import { toast } from 'sonner';
+import { UserSearch } from './UserSearch';
 
 interface SearchSectionProps {
-  onCardsFound: (cards: PipefyCard[], fromEmail: string, pipeName: string) => void;
-  newAssigneeEmail: string;
-  onNewAssigneeChange: (email: string) => void;
+  onCardsFound: (cards: PipefyCard[], pipeName: string) => void;
+  selectedFromUser: PipefyMember | null;
+  selectedToUser: PipefyMember | null;
+  onFromUserChange: (member: PipefyMember | null) => void;
+  onToUserChange: (member: PipefyMember | null) => void;
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function SearchSection({ onCardsFound, newAssigneeEmail, onNewAssigneeChange }: SearchSectionProps) {
-  const { token, pipes, refreshPipes, isConnected } = usePipefy();
-  const [currentEmail, setCurrentEmail] = useState('');
-  const [selectedPipe, setSelectedPipe] = useState<string>('');
+export function SearchSection({
+  onCardsFound,
+  selectedFromUser,
+  selectedToUser,
+  onFromUserChange,
+  onToUserChange,
+}: SearchSectionProps) {
+  const { token, pipes, isConnected, refreshPipes } = usePipefy();
+  const [selectedPipeId, setSelectedPipeId] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [newEmailError, setNewEmailError] = useState<string | null>(null);
-
-  const validateEmail = (email: string): boolean => {
-    return EMAIL_REGEX.test(email);
-  };
-
-  const handleCurrentEmailChange = (value: string) => {
-    setCurrentEmail(value);
-    if (value && !validateEmail(value)) {
-      setEmailError('Email inválido');
-    } else if (value && value.toLowerCase() === newAssigneeEmail.toLowerCase()) {
-      setEmailError('Emails devem ser diferentes');
-    } else {
-      setEmailError(null);
-    }
-  };
-
-  const handleNewEmailChange = (value: string) => {
-    onNewAssigneeChange(value);
-    if (value && !validateEmail(value)) {
-      setNewEmailError('Email inválido');
-    } else if (value && value.toLowerCase() === currentEmail.toLowerCase()) {
-      setNewEmailError('Emails devem ser diferentes');
-    } else {
-      setNewEmailError(null);
-    }
-  };
 
   const handleRefreshPipes = async () => {
     setIsRefreshing(true);
     await refreshPipes();
     setIsRefreshing(false);
-    toast({
-      title: 'Pipes atualizados',
-      description: 'Lista de pipes recarregada com sucesso.',
-    });
+    toast.success('Lista de pipes atualizada!');
   };
 
   const handleSearch = async () => {
-    if (!token || !selectedPipe || !currentEmail) return;
-
-    if (!validateEmail(currentEmail)) {
-      setEmailError('Email inválido');
-      return;
-    }
+    if (!token || !selectedPipeId || !selectedFromUser) return;
 
     setIsSearching(true);
-
     try {
-      const cards = await searchCardsByAssignee(token, selectedPipe, currentEmail);
-      const pipe = pipes.find(p => p.id === selectedPipe);
-      onCardsFound(cards, currentEmail, pipe?.name || 'Pipe');
+      const cards = await searchCardsByAssignee(token, selectedPipeId, selectedFromUser.user.email);
+      const pipeName = pipes.find(p => p.id === selectedPipeId)?.name || 'Pipe';
+      onCardsFound(cards, pipeName);
       
       if (cards.length === 0) {
-        toast({
-          title: 'Nenhum card encontrado',
-          description: `Não há cards atribuídos a ${currentEmail} neste pipe.`,
-        });
+        toast.info('Nenhum card encontrado para este responsável.');
       } else {
-        toast({
-          title: `${cards.length} card(s) encontrado(s)`,
-          description: `Localizados no pipe "${pipe?.name}"`,
-        });
+        toast.success(`${cards.length} card(s) encontrado(s)!`);
       }
     } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro na busca',
-        description: error instanceof Error ? error.message : 'Erro ao buscar cards',
-      });
+      toast.error(error instanceof Error ? error.message : 'Erro ao buscar cards');
+      onCardsFound([], '');
     } finally {
       setIsSearching(false);
     }
   };
 
-  const canSearch = isConnected && selectedPipe && currentEmail && validateEmail(currentEmail) && !emailError;
+  const canSearch = isConnected && selectedPipeId && selectedFromUser && selectedToUser && 
+    selectedFromUser.user.id !== selectedToUser.user.id;
+
+  const sameUserError = selectedFromUser && selectedToUser && 
+    selectedFromUser.user.id === selectedToUser.user.id
+    ? 'Os responsáveis devem ser diferentes'
+    : undefined;
 
   return (
-    <Card className="shadow-soft">
-      <CardContent className="p-6">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {/* Current Assignee Email */}
-          <div className="space-y-2">
-            <Label htmlFor="currentEmail">Email do Responsável Atual</Label>
-            <Input
-              id="currentEmail"
-              type="email"
-              placeholder="responsavel@empresa.com"
-              value={currentEmail}
-              onChange={(e) => handleCurrentEmailChange(e.target.value)}
-              className={`input-field ${emailError ? 'border-destructive focus:ring-destructive/20' : ''}`}
-            />
-            {emailError && (
-              <p className="text-xs text-destructive">{emailError}</p>
-            )}
-          </div>
+    <Card className="card-elevated">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Search className="h-5 w-5 text-primary" />
+          Buscar Cards
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* From User */}
+        <UserSearch
+          label="Responsável Atual"
+          placeholder="Digite nome ou email do responsável atual..."
+          selectedUser={selectedFromUser}
+          onUserSelect={onFromUserChange}
+          excludeUserId={selectedToUser?.user.id}
+        />
 
-          {/* Pipe Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Selecionar Pipe</Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRefreshPipes}
-                disabled={isRefreshing}
-                className="h-6 px-2 text-xs"
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
-            </div>
-            <Select value={selectedPipe} onValueChange={setSelectedPipe}>
-              <SelectTrigger className="input-field">
-                <SelectValue placeholder="Escolha um pipe..." />
+        {/* Pipe Selection */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Pipe</Label>
+          <div className="flex gap-2">
+            <Select value={selectedPipeId} onValueChange={setSelectedPipeId}>
+              <SelectTrigger className="flex-1">
+                <SelectValue placeholder="Selecione um pipe..." />
               </SelectTrigger>
               <SelectContent>
                 {pipes.map((pipe) => (
@@ -154,46 +106,46 @@ export function SearchSection({ onCardsFound, newAssigneeEmail, onNewAssigneeCha
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          {/* New Assignee Email */}
-          <div className="space-y-2">
-            <Label htmlFor="newEmail">Email do Novo Responsável</Label>
-            <Input
-              id="newEmail"
-              type="email"
-              placeholder="novo@empresa.com"
-              value={newAssigneeEmail}
-              onChange={(e) => handleNewEmailChange(e.target.value)}
-              className={`input-field ${newEmailError ? 'border-destructive focus:ring-destructive/20' : ''}`}
-            />
-            {newEmailError && (
-              <p className="text-xs text-destructive">{newEmailError}</p>
-            )}
-          </div>
-
-          {/* Search Button */}
-          <div className="space-y-2">
-            <Label className="invisible">Ação</Label>
             <Button
-              onClick={handleSearch}
-              disabled={!canSearch || isSearching}
-              className="w-full btn-primary h-10"
+              variant="outline"
+              size="icon"
+              onClick={handleRefreshPipes}
+              disabled={isRefreshing}
+              title="Atualizar lista de pipes"
             >
-              {isSearching ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Buscando...
-                </>
-              ) : (
-                <>
-                  <Search className="mr-2 h-4 w-4" />
-                  Buscar Projetos
-                </>
-              )}
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </div>
+
+        {/* To User */}
+        <UserSearch
+          label="Novo Responsável"
+          placeholder="Digite nome ou email do novo responsável..."
+          selectedUser={selectedToUser}
+          onUserSelect={onToUserChange}
+          excludeUserId={selectedFromUser?.user.id}
+          error={sameUserError}
+        />
+
+        {/* Search Button */}
+        <Button
+          onClick={handleSearch}
+          disabled={!canSearch || isSearching}
+          className="w-full btn-primary h-11"
+        >
+          {isSearching ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Buscando...
+            </>
+          ) : (
+            <>
+              <Search className="mr-2 h-4 w-4" />
+              Buscar Cards
+            </>
+          )}
+        </Button>
       </CardContent>
     </Card>
   );
