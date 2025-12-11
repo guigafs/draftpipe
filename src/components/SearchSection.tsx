@@ -3,6 +3,7 @@ import { Search, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -23,6 +24,13 @@ interface SearchSectionProps {
   onToUserChange: (member: PipefyMember | null) => void;
 }
 
+interface SearchProgress {
+  currentPhase: number;
+  totalPhases: number;
+  phaseName: string;
+  cardsFound: number;
+}
+
 export function SearchSection({
   onCardsFound,
   selectedFromUser,
@@ -34,6 +42,7 @@ export function SearchSection({
   const [selectedPipeId, setSelectedPipeId] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
 
   const handleRefreshPipes = async () => {
     setIsRefreshing(true);
@@ -46,8 +55,17 @@ export function SearchSection({
     if (!token || !selectedPipeId || !selectedFromUser) return;
 
     setIsSearching(true);
+    setSearchProgress(null);
+    
     try {
-      const cards = await searchCardsByAssignee(token, selectedPipeId, selectedFromUser.user.email);
+      const cards = await searchCardsByAssignee(
+        token, 
+        selectedPipeId, 
+        selectedFromUser.user.email,
+        (currentPhase, totalPhases, phaseName, cardsFound) => {
+          setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
+        }
+      );
       const pipeName = pipes.find(p => p.id === selectedPipeId)?.name || 'Pipe';
       onCardsFound(cards, pipeName);
       
@@ -61,6 +79,7 @@ export function SearchSection({
       onCardsFound([], '');
     } finally {
       setIsSearching(false);
+      setSearchProgress(null);
     }
   };
 
@@ -71,6 +90,10 @@ export function SearchSection({
     selectedFromUser.user.id === selectedToUser.user.id
     ? 'Os responsáveis devem ser diferentes'
     : undefined;
+
+  const progressPercentage = searchProgress 
+    ? (searchProgress.currentPhase / searchProgress.totalPhases) * 100 
+    : 0;
 
   return (
     <Card className="card-elevated">
@@ -127,6 +150,24 @@ export function SearchSection({
           excludeUserId={selectedFromUser?.user.id}
           error={sameUserError}
         />
+
+        {/* Search Progress */}
+        {isSearching && searchProgress && (
+          <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">
+                Fase {searchProgress.currentPhase}/{searchProgress.totalPhases}
+              </span>
+              <span className="text-muted-foreground">
+                {searchProgress.cardsFound} cards encontrados
+              </span>
+            </div>
+            <Progress value={progressPercentage} className="h-2" />
+            <p className="text-xs text-muted-foreground truncate">
+              {searchProgress.phaseName}
+            </p>
+          </div>
+        )}
 
         {/* Search Button */}
         <Button

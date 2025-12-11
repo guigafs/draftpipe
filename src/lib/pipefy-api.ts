@@ -186,21 +186,23 @@ export async function fetchPipes(token: string, organizationId: string): Promise
   return data.organization.pipes || [];
 }
 
-// Search cards by assignee email (fetching through phases, filtering active only)
-export async function searchCardsByAssignee(
+// Progress callback type for search
+export type SearchProgressCallback = (currentPhase: number, totalPhases: number, phaseName: string, cardsFound: number) => void;
+
+// Fetch all cards from a phase with pagination
+async function fetchAllCardsFromPhase(
   token: string,
-  pipeId: string,
-  email: string
+  phaseId: string
 ): Promise<PipefyCard[]> {
-  const query = `
-    query($pipeId: ID!) {
-      pipe(id: $pipeId) {
-        name
-        phases {
-          id
-          name
-          done
-          cards(first: 50) {
+  const allCards: PipefyCard[] = [];
+  let hasNextPage = true;
+  let cursor: string | null = null;
+
+  while (hasNextPage) {
+    const query = `
+      query($phaseId: ID!, $after: String) {
+        phase(id: $phaseId) {
+          cards(first: 50, after: $after) {
             edges {
               node {
                 id
@@ -217,38 +219,87 @@ export async function searchCardsByAssignee(
                 created_at
               }
             }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
           }
+        }
+      }
+    `;
+
+    const data = await rateLimitedRequest<{
+      phase: {
+        cards: {
+          edges: { node: PipefyCard }[];
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        };
+      };
+    }>(token, query, { phaseId, after: cursor });
+
+    const cards = data.phase.cards.edges.map(edge => edge.node);
+    allCards.push(...cards);
+
+    hasNextPage = data.phase.cards.pageInfo.hasNextPage;
+    cursor = data.phase.cards.pageInfo.endCursor;
+  }
+
+  return allCards;
+}
+
+// Search cards by assignee email (fetching through phases with full pagination)
+export async function searchCardsByAssignee(
+  token: string,
+  pipeId: string,
+  email: string,
+  onProgress?: SearchProgressCallback
+): Promise<PipefyCard[]> {
+  // First, get all phases from the pipe
+  const phasesQuery = `
+    query($pipeId: ID!) {
+      pipe(id: $pipeId) {
+        name
+        phases {
+          id
+          name
+          done
         }
       }
     }
   `;
 
-  const data = await rateLimitedRequest<{ 
-    pipe: { 
+  const phasesData = await rateLimitedRequest<{
+    pipe: {
       name: string;
       phases: Array<{
         id: string;
         name: string;
         done: boolean;
-        cards: { 
-          edges: { node: PipefyCard }[] 
-        };
       }>;
-    } 
-  }>(token, query, { pipeId });
+    };
+  }>(token, phasesQuery, { pipeId });
 
-  // Collect cards from ALL phases that are NOT done (done: false)
+  // Filter only active phases (done: false)
+  const activePhases = phasesData.pipe.phases.filter(phase => !phase.done);
+  const totalPhases = activePhases.length;
   const allCards: PipefyCard[] = [];
-  
-  for (const phase of data.pipe.phases) {
-    if (!phase.done) {
-      const phaseCards = phase.cards.edges.map(edge => edge.node);
-      allCards.push(...phaseCards);
-    }
+
+  // Fetch cards from each active phase with pagination
+  for (let i = 0; i < activePhases.length; i++) {
+    const phase = activePhases[i];
+    
+    // Report progress
+    onProgress?.(i + 1, totalPhases, phase.name, allCards.length);
+
+    const phaseCards = await fetchAllCardsFromPhase(token, phase.id);
+    allCards.push(...phaseCards);
   }
 
+  // Final progress update
+  onProgress?.(totalPhases, totalPhases, 'Filtrando resultados...', allCards.length);
+
   // Filter locally by assignee email
-  return allCards.filter(card => 
+  return allCards.filter(card =>
     card.assignees.some(a => a.email.toLowerCase() === email.toLowerCase())
   );
 }
