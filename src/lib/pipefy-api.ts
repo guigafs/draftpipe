@@ -186,42 +186,66 @@ export async function fetchPipes(token: string, organizationId: string): Promise
   return data.organization.pipes || [];
 }
 
-// Search cards by assignee email
+// Search cards by assignee email (with pagination and local filtering)
 export async function searchCardsByAssignee(
   token: string,
   pipeId: string,
   email: string
 ): Promise<PipefyCard[]> {
-  const query = `
-    query($pipeId: ID!, $assigneeEmail: [String]) {
-      cards(pipe_id: $pipeId, search: {assignee_emails: $assigneeEmail}) {
-        edges {
-          node {
-            id
-            title
-            current_phase {
-              id
-              name
+  const allCards: PipefyCard[] = [];
+  let hasNextPage = true;
+  let cursor: string | null = null;
+
+  while (hasNextPage) {
+    const query = `
+      query($pipeId: ID!, $after: String) {
+        pipe(id: $pipeId) {
+          cards(first: 50, after: $after) {
+            edges {
+              node {
+                id
+                title
+                current_phase {
+                  id
+                  name
+                }
+                assignees {
+                  id
+                  name
+                  email
+                }
+                created_at
+              }
             }
-            assignees {
-              id
-              name
-              email
+            pageInfo {
+              hasNextPage
+              endCursor
             }
-            created_at
           }
         }
       }
-    }
-  `;
+    `;
 
-  const data = await rateLimitedRequest<{ cards: { edges: { node: PipefyCard }[] } }>(
-    token,
-    query,
-    { pipeId, assigneeEmail: [email] }
+    const data = await rateLimitedRequest<{ 
+      pipe: { 
+        cards: { 
+          edges: { node: PipefyCard }[]; 
+          pageInfo: { hasNextPage: boolean; endCursor: string | null } 
+        } 
+      } 
+    }>(token, query, { pipeId, after: cursor });
+
+    const cards = data.pipe.cards.edges.map(edge => edge.node);
+    allCards.push(...cards);
+    
+    hasNextPage = data.pipe.cards.pageInfo.hasNextPage;
+    cursor = data.pipe.cards.pageInfo.endCursor;
+  }
+
+  // Filter locally by assignee email
+  return allCards.filter(card => 
+    card.assignees.some(a => a.email.toLowerCase() === email.toLowerCase())
   );
-
-  return data.cards.edges.map(edge => edge.node);
 }
 
 // Search user by email
