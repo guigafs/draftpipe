@@ -1,6 +1,8 @@
-import { Settings, HelpCircle, CheckCircle, XCircle, LogOut } from 'lucide-react';
+import { Settings, HelpCircle, CheckCircle, XCircle, LogOut, Power } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { usePipefy } from '@/contexts/PipefyContext';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Tooltip,
   TooltipContent,
@@ -14,6 +16,14 @@ interface HeaderProps {
 
 export function Header({ onSettingsClick, onHelpClick }: HeaderProps) {
   const { isConnected, user, clearToken } = usePipefy();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    clearToken();
+    logout();
+    navigate('/login');
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
@@ -81,9 +91,23 @@ export function Header({ onSettingsClick, onHelpClick }: HeaderProps) {
                   <LogOut className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Desconectar</TooltipContent>
+              <TooltipContent>Desconectar Pipefy</TooltipContent>
             </Tooltip>
           )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="gap-2 text-muted-foreground hover:text-destructive"
+              >
+                <Power className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Sair do Sistema</TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </header>
