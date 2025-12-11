@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, CheckSquare, Square, RotateCcw, X, User } from 'lucide-react';
+import { Search, CheckSquare, Square, RotateCcw, X, User, FolderKanban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -192,9 +192,17 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
                       </p>
                     </div>
 
-                    <Badge variant="outline" className="shrink-0 status-info">
-                      {card.current_phase?.name || 'Sem fase'}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {card.pipeName && (
+                        <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                          <FolderKanban className="h-3 w-3" />
+                          {card.pipeName}
+                        </Badge>
+                      )}
+                      <Badge variant="outline" className="status-info">
+                        {card.current_phase?.name || 'Sem fase'}
+                      </Badge>
+                    </div>
                   </div>
 
                   {card.assignees && card.assignees.length > 0 && (
