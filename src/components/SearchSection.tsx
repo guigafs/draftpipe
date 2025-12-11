@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -12,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { searchCardsByAssignee, PipefyCard, PipefyMember } from '@/lib/pipefy-api';
+import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember } from '@/lib/pipefy-api';
 import { toast } from 'sonner';
 import { UserSearch } from './UserSearch';
 
@@ -25,6 +26,9 @@ interface SearchSectionProps {
 }
 
 interface SearchProgress {
+  currentPipe?: number;
+  totalPipes?: number;
+  pipeName?: string;
   currentPhase: number;
   totalPhases: number;
   phaseName: string;
@@ -58,16 +62,34 @@ export function SearchSection({
     setSearchProgress(null);
     
     try {
-      const cards = await searchCardsByAssignee(
-        token, 
-        selectedPipeId, 
-        selectedFromUser.user.email,
-        (currentPhase, totalPhases, phaseName, cardsFound) => {
-          setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
-        }
-      );
-      const pipeName = pipes.find(p => p.id === selectedPipeId)?.name || 'Pipe';
-      onCardsFound(cards, pipeName);
+      let cards: PipefyCard[];
+      let resultPipeName: string;
+
+      if (selectedPipeId === 'all') {
+        // Search in all pipes
+        cards = await searchCardsInAllPipes(
+          token,
+          pipes,
+          selectedFromUser.user.email,
+          (currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound) => {
+            setSearchProgress({ currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound });
+          }
+        );
+        resultPipeName = 'Todos os pipes';
+      } else {
+        // Search in single pipe
+        cards = await searchCardsByAssignee(
+          token, 
+          selectedPipeId, 
+          selectedFromUser.user.email,
+          (currentPhase, totalPhases, phaseName, cardsFound) => {
+            setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
+          }
+        );
+        resultPipeName = pipes.find(p => p.id === selectedPipeId)?.name || 'Pipe';
+      }
+
+      onCardsFound(cards, resultPipeName);
       
       if (cards.length === 0) {
         toast.info('Nenhum card encontrado para este responsável.');
@@ -122,6 +144,10 @@ export function SearchSection({
                 <SelectValue placeholder="Selecione um pipe..." />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">
+                  🔍 Todos os pipes
+                </SelectItem>
+                <Separator className="my-1" />
                 {pipes.map((pipe) => (
                   <SelectItem key={pipe.id} value={pipe.id}>
                     {pipe.name}
@@ -156,6 +182,9 @@ export function SearchSection({
           <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">
+                {searchProgress.currentPipe && searchProgress.totalPipes && (
+                  <span className="font-medium">Pipe {searchProgress.currentPipe}/{searchProgress.totalPipes} • </span>
+                )}
                 Fase {searchProgress.currentPhase}/{searchProgress.totalPhases}
               </span>
               <span className="text-muted-foreground">
@@ -163,9 +192,12 @@ export function SearchSection({
               </span>
             </div>
             <Progress value={progressPercentage} className="h-2" />
-            <p className="text-xs text-muted-foreground truncate">
-              {searchProgress.phaseName}
-            </p>
+            <div className="text-xs text-muted-foreground truncate space-y-0.5">
+              {searchProgress.pipeName && (
+                <p className="font-medium">{searchProgress.pipeName}</p>
+              )}
+              <p>{searchProgress.phaseName}</p>
+            </div>
           </div>
         )}
 

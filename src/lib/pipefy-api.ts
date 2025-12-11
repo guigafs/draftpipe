@@ -25,6 +25,7 @@ export interface PipefyCard {
   current_phase: PipefyPhase;
   assignees: PipefyUser[];
   created_at?: string;
+  pipeName?: string;
 }
 
 export interface PipefyPipe {
@@ -189,6 +190,17 @@ export async function fetchPipes(token: string, organizationId: string): Promise
 // Progress callback type for search
 export type SearchProgressCallback = (currentPhase: number, totalPhases: number, phaseName: string, cardsFound: number) => void;
 
+// Progress callback type for all pipes search
+export type AllPipesProgressCallback = (
+  currentPipe: number,
+  totalPipes: number,
+  pipeName: string,
+  currentPhase: number,
+  totalPhases: number,
+  phaseName: string,
+  cardsFound: number
+) => void;
+
 // Fetch all cards from a phase with pagination
 async function fetchAllCardsFromPhase(
   token: string,
@@ -302,6 +314,43 @@ export async function searchCardsByAssignee(
   return allCards.filter(card =>
     card.assignees.some(a => a.email.toLowerCase() === email.toLowerCase())
   );
+}
+
+// Search cards in all pipes
+export async function searchCardsInAllPipes(
+  token: string,
+  pipes: PipefyPipe[],
+  email: string,
+  onProgress?: AllPipesProgressCallback
+): Promise<PipefyCard[]> {
+  const allCards: PipefyCard[] = [];
+
+  for (let pipeIndex = 0; pipeIndex < pipes.length; pipeIndex++) {
+    const pipe = pipes[pipeIndex];
+
+    const pipeCards = await searchCardsByAssignee(
+      token,
+      pipe.id,
+      email,
+      (currentPhase, totalPhases, phaseName, cardsFound) => {
+        onProgress?.(
+          pipeIndex + 1,
+          pipes.length,
+          pipe.name,
+          currentPhase,
+          totalPhases,
+          phaseName,
+          allCards.length + cardsFound
+        );
+      }
+    );
+
+    // Add pipe name to each card
+    const cardsWithPipe = pipeCards.map(card => ({ ...card, pipeName: pipe.name }));
+    allCards.push(...cardsWithPipe);
+  }
+
+  return allCards;
 }
 
 // Search user by email
