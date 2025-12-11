@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { validateToken, fetchPipes, PipefyUser, PipefyPipe } from '@/lib/pipefy-api';
+import { validateToken, fetchPipes, fetchOrganizationMembers, PipefyUser, PipefyPipe, PipefyMember } from '@/lib/pipefy-api';
 
 interface TransferRecord {
   id: string;
@@ -17,12 +17,15 @@ interface PipefyContextType {
   token: string | null;
   user: PipefyUser | null;
   pipes: PipefyPipe[];
+  members: PipefyMember[];
+  organizationId: string | null;
   isConnected: boolean;
   isLoading: boolean;
   history: TransferRecord[];
-  setToken: (token: string) => Promise<{ success: boolean; error?: string }>;
+  setToken: (token: string, orgId: string) => Promise<{ success: boolean; error?: string }>;
   clearToken: () => void;
   refreshPipes: () => Promise<void>;
+  refreshMembers: () => Promise<void>;
   addHistoryRecord: (record: Omit<TransferRecord, 'id' | 'timestamp'>) => void;
   clearHistory: () => void;
 }
@@ -30,12 +33,15 @@ interface PipefyContextType {
 const PipefyContext = createContext<PipefyContextType | null>(null);
 
 const TOKEN_KEY = 'pipefy_token';
+const ORG_ID_KEY = 'pipefy_org_id';
 const HISTORY_KEY = 'pipefy_transfer_history';
 
 export function PipefyProvider({ children }: { children: React.ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [user, setUser] = useState<PipefyUser | null>(null);
   const [pipes, setPipes] = useState<PipefyPipe[]>([]);
+  const [members, setMembers] = useState<PipefyMember[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [history, setHistory] = useState<TransferRecord[]>([]);
@@ -66,30 +72,37 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
   // Initialize from localStorage
   useEffect(() => {
     const savedToken = localStorage.getItem(TOKEN_KEY);
-    if (savedToken) {
-      validateAndSetToken(savedToken);
+    const savedOrgId = localStorage.getItem(ORG_ID_KEY);
+    if (savedToken && savedOrgId) {
+      validateAndSetToken(savedToken, savedOrgId);
     } else {
       setIsLoading(false);
     }
   }, []);
 
-  const validateAndSetToken = async (newToken: string): Promise<{ success: boolean; error?: string }> => {
+  const validateAndSetToken = async (newToken: string, orgId: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     
     const result = await validateToken(newToken);
     
     if (result.valid && result.user) {
       setTokenState(newToken);
+      setOrganizationId(orgId);
       setUser(result.user);
       setIsConnected(true);
       localStorage.setItem(TOKEN_KEY, newToken);
+      localStorage.setItem(ORG_ID_KEY, orgId);
       
-      // Fetch pipes after successful connection
+      // Fetch pipes and members after successful connection
       try {
-        const pipesData = await fetchPipes(newToken);
+        const [pipesData, membersData] = await Promise.all([
+          fetchPipes(newToken, orgId),
+          fetchOrganizationMembers(newToken, orgId)
+        ]);
         setPipes(pipesData);
+        setMembers(membersData);
       } catch (error) {
-        console.error('Error fetching pipes:', error);
+        console.error('Error fetching organization data:', error);
       }
       
       setIsLoading(false);
@@ -102,22 +115,36 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
 
   const clearToken = useCallback(() => {
     setTokenState(null);
+    setOrganizationId(null);
     setUser(null);
     setPipes([]);
+    setMembers([]);
     setIsConnected(false);
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ORG_ID_KEY);
   }, []);
 
   const refreshPipes = useCallback(async () => {
-    if (!token) return;
+    if (!token || !organizationId) return;
     
     try {
-      const pipesData = await fetchPipes(token);
+      const pipesData = await fetchPipes(token, organizationId);
       setPipes(pipesData);
     } catch (error) {
       console.error('Error refreshing pipes:', error);
     }
-  }, [token]);
+  }, [token, organizationId]);
+
+  const refreshMembers = useCallback(async () => {
+    if (!token || !organizationId) return;
+    
+    try {
+      const membersData = await fetchOrganizationMembers(token, organizationId);
+      setMembers(membersData);
+    } catch (error) {
+      console.error('Error refreshing members:', error);
+    }
+  }, [token, organizationId]);
 
   const addHistoryRecord = useCallback((record: Omit<TransferRecord, 'id' | 'timestamp'>) => {
     const newRecord: TransferRecord = {
@@ -143,12 +170,15 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         token,
         user,
         pipes,
+        members,
+        organizationId,
         isConnected,
         isLoading,
         history,
         setToken: validateAndSetToken,
         clearToken,
         refreshPipes,
+        refreshMembers,
         addHistoryRecord,
         clearHistory,
       }}

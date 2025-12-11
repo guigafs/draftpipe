@@ -6,6 +6,12 @@ export interface PipefyUser {
   id: string;
   name: string;
   email: string;
+  username?: string;
+}
+
+export interface PipefyMember {
+  role_name: string;
+  user: PipefyUser;
 }
 
 export interface PipefyPhase {
@@ -29,7 +35,8 @@ export interface PipefyPipe {
 export interface PipefyOrganization {
   id: string;
   name: string;
-  pipes: PipefyPipe[];
+  pipes?: PipefyPipe[];
+  members?: PipefyMember[];
 }
 
 export interface ApiError {
@@ -126,29 +133,57 @@ export async function validateToken(token: string): Promise<{ valid: boolean; us
   }
 }
 
-// Fetch organization pipes
-export async function fetchPipes(token: string): Promise<PipefyPipe[]> {
+// Fetch organization members
+export async function fetchOrganizationMembers(
+  token: string, 
+  organizationId: string
+): Promise<PipefyMember[]> {
   const query = `
-    query {
-      me {
-        organizations {
-          pipes {
+    query($orgId: ID!) {
+      organization(id: $orgId) {
+        name
+        members {
+          role_name
+          user {
             id
             name
+            email
+            username
           }
         }
       }
     }
   `;
 
-  const data = await rateLimitedRequest<{ me: { organizations: PipefyOrganization[] } }>(token, query);
+  const data = await rateLimitedRequest<{ organization: PipefyOrganization }>(
+    token, 
+    query, 
+    { orgId: organizationId }
+  );
   
-  const pipes: PipefyPipe[] = [];
-  data.me.organizations.forEach(org => {
-    pipes.push(...org.pipes);
-  });
+  return data.organization.members || [];
+}
+
+// Fetch organization pipes
+export async function fetchPipes(token: string, organizationId: string): Promise<PipefyPipe[]> {
+  const query = `
+    query($orgId: ID!) {
+      organization(id: $orgId) {
+        pipes {
+          id
+          name
+        }
+      }
+    }
+  `;
+
+  const data = await rateLimitedRequest<{ organization: PipefyOrganization }>(
+    token, 
+    query, 
+    { orgId: organizationId }
+  );
   
-  return pipes;
+  return data.organization.pipes || [];
 }
 
 // Search cards by assignee email

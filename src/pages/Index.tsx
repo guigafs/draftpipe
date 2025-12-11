@@ -10,7 +10,7 @@ import { HistorySection } from '@/components/HistorySection';
 import { HelpModal } from '@/components/HelpModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { PipefyCard, searchUserByEmail, transferCards } from '@/lib/pipefy-api';
+import { PipefyCard, PipefyMember, transferCards } from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
@@ -34,8 +34,8 @@ export default function Index() {
   // Data State
   const [cards, setCards] = useState<PipefyCard[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [fromEmail, setFromEmail] = useState('');
-  const [toEmail, setToEmail] = useState('');
+  const [selectedFromUser, setSelectedFromUser] = useState<PipefyMember | null>(null);
+  const [selectedToUser, setSelectedToUser] = useState<PipefyMember | null>(null);
   const [pipeName, setPipeName] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
 
@@ -44,9 +44,8 @@ export default function Index() {
   const [progressCount, setProgressCount] = useState(0);
   const [isTransferComplete, setIsTransferComplete] = useState(false);
 
-  const handleCardsFound = useCallback((foundCards: PipefyCard[], email: string, pipe: string) => {
+  const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string) => {
     setCards(foundCards);
-    setFromEmail(email);
     setPipeName(pipe);
     setSelectedIds(new Set());
   }, []);
@@ -63,11 +62,11 @@ export default function Index() {
       return;
     }
 
-    if (!toEmail) {
+    if (!selectedToUser) {
       toast({
         variant: 'destructive',
-        title: 'Email não informado',
-        description: 'Informe o email do novo responsável.',
+        title: 'Usuário não informado',
+        description: 'Selecione o novo responsável.',
       });
       return;
     }
@@ -76,7 +75,7 @@ export default function Index() {
   };
 
   const handleConfirmTransfer = async () => {
-    if (!token) return;
+    if (!token || !selectedToUser) return;
 
     setConfirmOpen(false);
     setProgressOpen(true);
@@ -91,26 +90,13 @@ export default function Index() {
     }));
     setProgressItems(initialItems);
 
-    // Find new user ID
-    const newUser = await searchUserByEmail(token, toEmail);
-
-    if (!newUser) {
-      toast({
-        variant: 'destructive',
-        title: 'Usuário não encontrado',
-        description: `Não foi possível encontrar o usuário ${toEmail} no Pipefy.`,
-      });
-      setProgressOpen(false);
-      return;
-    }
-
-    // Execute transfer
+    // Execute transfer - we already have the user ID from selected member
     const cardIds = selectedCards.map((c) => c.id);
 
     const result = await transferCards(
       token,
       cardIds,
-      newUser.id,
+      selectedToUser.user.id,
       (completed, total, cardId, success, error) => {
         setProgressCount(completed);
         setProgressItems((prev) =>
@@ -127,8 +113,8 @@ export default function Index() {
 
     // Add to history
     addHistoryRecord({
-      fromEmail,
-      toEmail,
+      fromEmail: selectedFromUser?.user.email || '',
+      toEmail: selectedToUser.user.email,
       cardIds: selectedCards.map((c) => c.id),
       cardTitles: selectedCards.map((c) => c.title),
       succeeded: result.succeeded,
@@ -189,8 +175,10 @@ export default function Index() {
         {/* Search Section */}
         <SearchSection
           onCardsFound={handleCardsFound}
-          newAssigneeEmail={toEmail}
-          onNewAssigneeChange={setToEmail}
+          selectedFromUser={selectedFromUser}
+          selectedToUser={selectedToUser}
+          onFromUserChange={setSelectedFromUser}
+          onToUserChange={setSelectedToUser}
         />
 
         {/* Main Content */}
@@ -237,8 +225,8 @@ export default function Index() {
       <TransferModal
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        fromEmail={fromEmail}
-        toEmail={toEmail}
+        fromEmail={selectedFromUser?.user.email || ''}
+        toEmail={selectedToUser?.user.email || ''}
         cards={selectedCards}
         onConfirm={handleConfirmTransfer}
       />

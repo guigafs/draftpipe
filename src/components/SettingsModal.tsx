@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Key, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { Key, Loader2, CheckCircle, AlertCircle, ExternalLink, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,8 +20,9 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
-  const { user, setToken, clearToken } = usePipefy();
+  const { user, organizationId, setToken, clearToken } = usePipefy();
   const [newToken, setNewToken] = useState('');
+  const [newOrgId, setNewOrgId] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -32,17 +33,23 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       return;
     }
 
+    if (!newOrgId.trim()) {
+      setError('Por favor, insira o ID da organização.');
+      return;
+    }
+
     setError(null);
     setSuccess(false);
     setIsUpdating(true);
 
-    const result = await setToken(newToken.trim());
+    const result = await setToken(newToken.trim(), newOrgId.trim());
 
     setIsUpdating(false);
 
     if (result.success) {
       setSuccess(true);
       setNewToken('');
+      setNewOrgId('');
       setTimeout(() => {
         onOpenChange(false);
         setSuccess(false);
@@ -80,6 +87,12 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               </div>
               <p className="text-sm text-muted-foreground">{user.email}</p>
               <p className="text-xs text-muted-foreground mt-1">{user.name}</p>
+              {organizationId && (
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <Building2 className="h-3 w-3" />
+                  Organização: {organizationId}
+                </p>
+              )}
             </div>
           )}
 
@@ -98,9 +111,25 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               }}
               className="font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground">
-              Insira um novo token para atualizar suas credenciais
-            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Label htmlFor="newOrgId" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              ID da Organização
+            </Label>
+            <Input
+              id="newOrgId"
+              type="text"
+              placeholder="Ex: 300549064"
+              value={newOrgId}
+              onChange={(e) => {
+                setNewOrgId(e.target.value);
+                setError(null);
+                setSuccess(false);
+              }}
+              className="font-mono text-sm"
+            />
           </div>
 
           {error && (
@@ -138,7 +167,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
           </Button>
           <Button
             onClick={handleUpdateToken}
-            disabled={!newToken.trim() || isUpdating}
+            disabled={!newToken.trim() || !newOrgId.trim() || isUpdating}
             className="btn-primary"
           >
             {isUpdating ? (
