@@ -186,21 +186,21 @@ export async function fetchPipes(token: string, organizationId: string): Promise
   return data.organization.pipes || [];
 }
 
-// Search cards by assignee email (with pagination and local filtering)
+// Search cards by assignee email (fetching through phases, filtering active only)
 export async function searchCardsByAssignee(
   token: string,
   pipeId: string,
   email: string
 ): Promise<PipefyCard[]> {
-  const allCards: PipefyCard[] = [];
-  let hasNextPage = true;
-  let cursor: string | null = null;
-
-  while (hasNextPage) {
-    const query = `
-      query($pipeId: ID!, $after: String) {
-        pipe(id: $pipeId) {
-          cards(first: 50, after: $after) {
+  const query = `
+    query($pipeId: ID!) {
+      pipe(id: $pipeId) {
+        name
+        phases {
+          id
+          name
+          done
+          cards(first: 50) {
             edges {
               node {
                 id
@@ -217,29 +217,34 @@ export async function searchCardsByAssignee(
                 created_at
               }
             }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
           }
         }
       }
-    `;
+    }
+  `;
 
-    const data = await rateLimitedRequest<{ 
-      pipe: { 
+  const data = await rateLimitedRequest<{ 
+    pipe: { 
+      name: string;
+      phases: Array<{
+        id: string;
+        name: string;
+        done: boolean;
         cards: { 
-          edges: { node: PipefyCard }[]; 
-          pageInfo: { hasNextPage: boolean; endCursor: string | null } 
-        } 
-      } 
-    }>(token, query, { pipeId, after: cursor });
+          edges: { node: PipefyCard }[] 
+        };
+      }>;
+    } 
+  }>(token, query, { pipeId });
 
-    const cards = data.pipe.cards.edges.map(edge => edge.node);
-    allCards.push(...cards);
-    
-    hasNextPage = data.pipe.cards.pageInfo.hasNextPage;
-    cursor = data.pipe.cards.pageInfo.endCursor;
+  // Collect cards from ALL phases that are NOT done (done: false)
+  const allCards: PipefyCard[] = [];
+  
+  for (const phase of data.pipe.phases) {
+    if (!phase.done) {
+      const phaseCards = phase.cards.edges.map(edge => edge.node);
+      allCards.push(...phaseCards);
+    }
   }
 
   // Filter locally by assignee email
