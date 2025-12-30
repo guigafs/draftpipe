@@ -17,6 +17,7 @@ import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember 
 import { toast } from 'sonner';
 import { UserSearch } from './UserSearch';
 import { SearchConfirmModal } from './SearchConfirmModal';
+import { CacheIndicator } from './CacheIndicator';
 
 interface SearchSectionProps {
   onCardsFound: (cards: PipefyCard[], pipeName: string, pipeId: string) => void;
@@ -43,7 +44,7 @@ export function SearchSection({
   onFromUserChange,
   onToUserChange,
 }: SearchSectionProps) {
-  const { token, pipes, isConnected, refreshPipes, refreshMembers } = usePipefy();
+  const { token, pipes, isConnected, refreshPipes, refreshMembers, pipesCacheUpdatedAt, membersCacheUpdatedAt } = usePipefy();
   const [selectedPipeId, setSelectedPipeId] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -163,34 +164,40 @@ export function SearchSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Refresh Buttons */}
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefreshMembers}
-            disabled={isRefreshingMembers || !isConnected}
-          >
-            {isRefreshingMembers ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Users className="h-4 w-4 mr-2" />
-            )}
-            Atualizar Usuários
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefreshPipes}
-            disabled={isRefreshing || !isConnected}
-          >
-            {isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
-            )}
-            Atualizar Pipes
-          </Button>
+        {/* Refresh Buttons with Cache Indicators */}
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshMembers}
+              disabled={isRefreshingMembers || !isConnected}
+            >
+              {isRefreshingMembers ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Users className="h-4 w-4 mr-2" />
+              )}
+              Atualizar Usuários
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshPipes}
+              disabled={isRefreshing || !isConnected}
+            >
+              {isRefreshing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Atualizar Pipes
+            </Button>
+          </div>
+          <div className="flex justify-end gap-4">
+            <CacheIndicator updatedAt={membersCacheUpdatedAt} label="Usuários" />
+            <CacheIndicator updatedAt={pipesCacheUpdatedAt} label="Pipes" />
+          </div>
         </div>
 
         {/* From User */}
