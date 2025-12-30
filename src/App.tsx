@@ -9,6 +9,8 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import Responsaveis from "./pages/Responsaveis";
+import Automacoes from "./pages/Automacoes";
 
 const queryClient = new QueryClient();
 
@@ -25,6 +27,16 @@ const App = () => (
               <Route path="/" element={
                 <ProtectedRoute>
                   <Index />
+                </ProtectedRoute>
+              } />
+              <Route path="/responsaveis" element={
+                <ProtectedRoute>
+                  <Responsaveis />
+                </ProtectedRoute>
+              } />
+              <Route path="/automacoes" element={
+                <ProtectedRoute>
+                  <Automacoes />
                 </ProtectedRoute>
               } />
               <Route path="*" element={<NotFound />} />
