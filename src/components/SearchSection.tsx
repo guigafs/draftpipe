@@ -19,7 +19,7 @@ import { UserSearch } from './UserSearch';
 import { SearchConfirmModal } from './SearchConfirmModal';
 
 interface SearchSectionProps {
-  onCardsFound: (cards: PipefyCard[], pipeName: string) => void;
+  onCardsFound: (cards: PipefyCard[], pipeName: string, pipeId: string) => void;
   selectedFromUser: PipefyMember | null;
   selectedToUser: PipefyMember | null;
   onFromUserChange: (member: PipefyMember | null) => void;
@@ -105,6 +105,7 @@ export function SearchSection({
           controller.signal
         );
         resultPipeName = 'Todos os pipes';
+        onCardsFound(cards, resultPipeName, 'all');
       } else {
         // Search in single pipe - pass cached phases
         const selectedPipe = pipes.find(p => p.id === selectedPipeId);
@@ -119,9 +120,8 @@ export function SearchSection({
           controller.signal
         );
         resultPipeName = selectedPipe?.name || 'Pipe';
+        onCardsFound(cards, resultPipeName, selectedPipeId);
       }
-
-      onCardsFound(cards, resultPipeName);
       
       if (cards.length === 0) {
         toast.info('Nenhum card encontrado para este responsável.');
@@ -134,7 +134,7 @@ export function SearchSection({
         return;
       }
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar cards');
-      onCardsFound([], '');
+      onCardsFound([], '', '');
     } finally {
       setIsSearching(false);
       setSearchProgress(null);
