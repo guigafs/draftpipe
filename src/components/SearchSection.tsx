@@ -106,17 +106,19 @@ export function SearchSection({
         );
         resultPipeName = 'Todos os pipes';
       } else {
-        // Search in single pipe
+        // Search in single pipe - pass cached phases
+        const selectedPipe = pipes.find(p => p.id === selectedPipeId);
         cards = await searchCardsByAssignee(
           token, 
           selectedPipeId, 
           selectedFromUser.user.email,
+          selectedPipe?.phases, // Pass cached phases to avoid extra API request
           (currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
           },
           controller.signal
         );
-        resultPipeName = pipes.find(p => p.id === selectedPipeId)?.name || 'Pipe';
+        resultPipeName = selectedPipe?.name || 'Pipe';
       }
 
       onCardsFound(cards, resultPipeName);

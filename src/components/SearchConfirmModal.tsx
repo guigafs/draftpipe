@@ -30,11 +30,23 @@ export function SearchConfirmModal({
   const isAllPipes = selectedPipeId === 'all';
   const selectedPipe = pipes.find(p => p.id === selectedPipeId);
   
-  // Estimate requests: 1 per pipe (to get phases) + N per phase (pagination)
-  const pipeCount = isAllPipes ? pipes.length : 1;
-  const estimatedRequests = isAllPipes 
-    ? `Mínimo ${pipeCount} requisições (${pipeCount} pipes × fases)`
-    : 'Mínimo 1 requisição + fases do pipe';
+  // Calculate requests based on cached phases (no extra request needed for phases)
+  const calculateEstimatedRequests = () => {
+    if (isAllPipes) {
+      // Sum all active phases from all pipes
+      const totalActivePhases = pipes.reduce((sum, pipe) => {
+        const activePhases = pipe.phases?.filter(p => !p.done).length || 0;
+        return sum + activePhases;
+      }, 0);
+      return `~${totalActivePhases} requisições (${pipes.length} pipes, fases em cache)`;
+    } else {
+      // Active phases from selected pipe
+      const activePhases = selectedPipe?.phases?.filter(p => !p.done).length || 1;
+      return `~${activePhases} requisições (fases em cache)`;
+    }
+  };
+  
+  const estimatedRequests = calculateEstimatedRequests();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
