@@ -43,9 +43,14 @@ export function AppSidebar() {
         <div className="flex items-center gap-3 px-2 py-2">
           <img src={logo} alt="Logo" className="h-8 w-8 object-contain" />
           {!isCollapsed && (
-            <span className="font-semibold text-sidebar-foreground">
-              Apollos Zap
-            </span>
+            <div className="flex flex-col">
+              <span className="font-semibold text-sidebar-foreground">
+                Draft Pipefy
+              </span>
+              <span className="text-xs text-muted-foreground">
+                feito pela Apollos
+              </span>
+            </div>
           )}
         </div>
       </SidebarHeader>
