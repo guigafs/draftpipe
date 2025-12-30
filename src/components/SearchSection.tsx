@@ -4,23 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember } from '@/lib/pipefy-api';
+import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember, PipefyPipe } from '@/lib/pipefy-api';
 import { toast } from 'sonner';
 import { UserSearch } from './UserSearch';
 import { SearchConfirmModal } from './SearchConfirmModal';
 import { CacheIndicator } from './CacheIndicator';
+import { PipeMultiSelect } from './PipeMultiSelect';
 
 interface SearchSectionProps {
-  onCardsFound: (cards: PipefyCard[], pipeName: string, pipeId: string) => void;
+  onCardsFound: (cards: PipefyCard[], pipeName: string, pipeIds: string[]) => void;
   selectedFromUser: PipefyMember | null;
   selectedToUser: PipefyMember | null;
   onFromUserChange: (member: PipefyMember | null) => void;
@@ -45,7 +38,7 @@ export function SearchSection({
   onToUserChange,
 }: SearchSectionProps) {
   const { token, pipes, isConnected, refreshPipes, refreshMembers, pipesCacheUpdatedAt, membersCacheUpdatedAt } = usePipefy();
-  const [selectedPipeId, setSelectedPipeId] = useState<string>('');
+  const [selectedPipeIds, setSelectedPipeIds] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
@@ -89,14 +82,14 @@ export function SearchSection({
   };
 
   const handleSearchClick = () => {
-    if (!token || !selectedPipeId || !selectedFromUser) return;
+    if (!token || selectedPipeIds.length === 0 || !selectedFromUser) return;
     setShowSearchConfirm(true);
   };
 
   const handleConfirmSearch = async () => {
     setShowSearchConfirm(false);
     
-    if (!token || !selectedPipeId || !selectedFromUser) return;
+    if (!token || selectedPipeIds.length === 0 || !selectedFromUser) return;
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -108,25 +101,32 @@ export function SearchSection({
       let cards: PipefyCard[];
       let resultPipeName: string;
 
-      if (selectedPipeId === 'all') {
-        // Search in all pipes
+      // Get selected pipes
+      const selectedPipes = selectedPipeIds.length === pipes.length
+        ? pipes
+        : pipes.filter(p => selectedPipeIds.includes(p.id));
+
+      if (selectedPipes.length > 1) {
+        // Search in multiple pipes
         cards = await searchCardsInAllPipes(
           token,
-          pipes,
+          selectedPipes,
           selectedFromUser.user.email,
           (currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound });
           },
           controller.signal
         );
-        resultPipeName = 'Todos os pipes';
-        onCardsFound(cards, resultPipeName, 'all');
+        resultPipeName = selectedPipeIds.length === pipes.length 
+          ? 'Todos os pipes' 
+          : `${selectedPipes.length} pipes selecionados`;
+        onCardsFound(cards, resultPipeName, selectedPipeIds);
       } else {
         // Search in single pipe - pass cached phases
-        const selectedPipe = pipes.find(p => p.id === selectedPipeId);
+        const selectedPipe = selectedPipes[0];
         cards = await searchCardsByAssignee(
           token, 
-          selectedPipeId, 
+          selectedPipe.id, 
           selectedFromUser.user.email,
           selectedPipe?.phases, // Pass cached phases to avoid extra API request
           (currentPhase, totalPhases, phaseName, cardsFound) => {
@@ -135,7 +135,7 @@ export function SearchSection({
           controller.signal
         );
         resultPipeName = selectedPipe?.name || 'Pipe';
-        onCardsFound(cards, resultPipeName, selectedPipeId);
+        onCardsFound(cards, resultPipeName, [selectedPipe.id]);
       }
       
       if (cards.length === 0) {
@@ -149,7 +149,7 @@ export function SearchSection({
         return;
       }
       toast.error(error instanceof Error ? error.message : 'Erro ao buscar cards');
-      onCardsFound([], '', '');
+      onCardsFound([], '', []);
     } finally {
       setIsSearching(false);
       setSearchProgress(null);
@@ -157,7 +157,7 @@ export function SearchSection({
     }
   };
 
-  const canSearch = isConnected && selectedPipeId && selectedFromUser && selectedToUser && 
+  const canSearch = isConnected && selectedPipeIds.length > 0 && selectedFromUser && selectedToUser && 
     selectedFromUser.user.id !== selectedToUser.user.id;
 
   const sameUserError = selectedFromUser && selectedToUser && 
@@ -225,23 +225,13 @@ export function SearchSection({
 
         {/* Pipe Selection */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Pipe</Label>
-          <Select value={selectedPipeId} onValueChange={setSelectedPipeId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione um pipe..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">
-                🔍 Todos os pipes
-              </SelectItem>
-              <Separator className="my-1" />
-              {[...pipes].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true })).map((pipe) => (
-                <SelectItem key={pipe.id} value={pipe.id}>
-                  {pipe.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label className="text-sm font-medium">Pipe(s)</Label>
+          <PipeMultiSelect
+            pipes={pipes}
+            selectedPipeIds={selectedPipeIds}
+            onSelectionChange={setSelectedPipeIds}
+            disabled={!isConnected}
+          />
         </div>
 
         {/* To User */}
@@ -314,7 +304,7 @@ export function SearchSection({
         open={showSearchConfirm}
         onOpenChange={setShowSearchConfirm}
         fromEmail={selectedFromUser?.user.email || ''}
-        selectedPipeId={selectedPipeId}
+        selectedPipeIds={selectedPipeIds}
         pipes={pipes}
         onConfirm={handleConfirmSearch}
       />

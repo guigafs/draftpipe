@@ -14,7 +14,7 @@ interface SearchConfirmModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   fromEmail: string;
-  selectedPipeId: string;
+  selectedPipeIds: string[];
   pipes: PipefyPipe[];
   onConfirm: () => void;
 }
@@ -23,30 +23,45 @@ export function SearchConfirmModal({
   open,
   onOpenChange,
   fromEmail,
-  selectedPipeId,
+  selectedPipeIds,
   pipes,
   onConfirm,
 }: SearchConfirmModalProps) {
-  const isAllPipes = selectedPipeId === 'all';
-  const selectedPipe = pipes.find(p => p.id === selectedPipeId);
+  const isAllPipes = selectedPipeIds.length === pipes.length;
+  const selectedPipes = pipes.filter(p => selectedPipeIds.includes(p.id));
   
   // Calculate requests based on cached phases (no extra request needed for phases)
   const calculateEstimatedRequests = () => {
+    if (selectedPipes.length === 0) {
+      return '0 requisições';
+    }
+    
+    // Sum all active phases from selected pipes
+    const totalActivePhases = selectedPipes.reduce((sum, pipe) => {
+      const activePhases = pipe.phases?.filter(p => !p.done).length || 0;
+      return sum + activePhases;
+    }, 0);
+    
     if (isAllPipes) {
-      // Sum all active phases from all pipes
-      const totalActivePhases = pipes.reduce((sum, pipe) => {
-        const activePhases = pipe.phases?.filter(p => !p.done).length || 0;
-        return sum + activePhases;
-      }, 0);
       return `~${totalActivePhases} requisições (${pipes.length} pipes, fases em cache)`;
+    } else if (selectedPipes.length === 1) {
+      return `~${totalActivePhases} requisições (fases em cache)`;
     } else {
-      // Active phases from selected pipe
-      const activePhases = selectedPipe?.phases?.filter(p => !p.done).length || 1;
-      return `~${activePhases} requisições (fases em cache)`;
+      return `~${totalActivePhases} requisições (${selectedPipes.length} pipes, fases em cache)`;
     }
   };
   
   const estimatedRequests = calculateEstimatedRequests();
+  
+  const getPipeDisplayText = () => {
+    if (isAllPipes) {
+      return `Todos os pipes (${pipes.length})`;
+    }
+    if (selectedPipes.length === 1) {
+      return selectedPipes[0].name;
+    }
+    return `${selectedPipes.length} pipes selecionados`;
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,7 +90,7 @@ export function SearchConfirmModal({
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Pipe(s):</span>
               <span className="font-medium text-sm">
-                {isAllPipes ? `Todos os pipes (${pipes.length})` : selectedPipe?.name || 'N/A'}
+                {getPipeDisplayText()}
               </span>
             </div>
             <div className="flex items-center justify-between pt-2 border-t border-border">

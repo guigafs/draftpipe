@@ -35,7 +35,7 @@ export default function Responsaveis() {
   const [selectedFromUser, setSelectedFromUser] = useState<PipefyMember | null>(null);
   const [selectedToUser, setSelectedToUser] = useState<PipefyMember | null>(null);
   const [pipeName, setPipeName] = useState('');
-  const [pipeId, setPipeId] = useState('');
+  const [pipeIds, setPipeIds] = useState<string[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
 
   // Progress State
@@ -46,10 +46,10 @@ export default function Responsaveis() {
   const [errorCount, setErrorCount] = useState(0);
   const [isTransferComplete, setIsTransferComplete] = useState(false);
 
-  const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string, id: string) => {
+  const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string, ids: string[]) => {
     setCards(foundCards);
     setPipeName(pipe);
-    setPipeId(id);
+    setPipeIds(ids);
     setSelectedIds(new Set());
   }, []);
 
@@ -104,8 +104,10 @@ export default function Responsaveis() {
     const cardIds = selectedCards.map((c) => c.id);
 
     // Prepare invite options to add user to pipe automatically if not a member
-    const inviteOptions: InviteOptions | undefined = pipeId && selectedToUser.user.email ? {
-      pipeId,
+    // Use the first pipeId for invitation (user will be added to that pipe)
+    const firstPipeId = pipeIds.length > 0 ? pipeIds[0] : undefined;
+    const inviteOptions: InviteOptions | undefined = firstPipeId && selectedToUser.user.email ? {
+      pipeId: firstPipeId,
       email: selectedToUser.user.email,
       roleName: 'member'
     } : undefined;
@@ -160,7 +162,7 @@ export default function Responsaveis() {
       succeeded: result.succeeded,
       failed: result.failed,
       pipeName,
-      pipeId,
+      pipeId: pipeIds.join(','),
     });
 
     // Show toast
