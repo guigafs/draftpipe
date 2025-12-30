@@ -1,18 +1,48 @@
 import { useState } from 'react';
-import { Key, ExternalLink, CheckCircle, AlertCircle, Loader2, Building2 } from 'lucide-react';
+import { Key, ExternalLink, CheckCircle, AlertCircle, Loader2, Building2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { usePipefy } from '@/contexts/PipefyContext';
+import { useUserRole } from '@/hooks/useUserRole';
 
 export function ConfigScreen() {
   const { setToken, isLoading } = usePipefy();
+  const { isAdmin, isLoading: roleLoading } = useUserRole();
   const [tokenInput, setTokenInput] = useState('');
   const [orgIdInput, setOrgIdInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [testing, setTesting] = useState(false);
+
+  // Se não é admin, mostrar mensagem de acesso negado
+  if (!roleLoading && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg animate-scale-in shadow-medium">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto mb-4 h-14 w-14 rounded-2xl bg-warning/10 flex items-center justify-center">
+              <ShieldAlert className="h-7 w-7 text-warning" />
+            </div>
+            <CardTitle className="text-2xl">Acesso Restrito</CardTitle>
+            <CardDescription className="text-base">
+              Aguardando configuração do administrador
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <Alert className="bg-warning/10 border-warning/30">
+              <AlertCircle className="h-4 w-4 text-warning" />
+              <AlertDescription className="text-sm">
+                O sistema ainda não foi configurado. Entre em contato com o administrador para configurar a conexão com o Pipefy.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handleSaveToken = async () => {
     if (!tokenInput.trim()) {
