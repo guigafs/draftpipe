@@ -16,6 +16,12 @@ interface TransferRecord {
   pipeId: string;
 }
 
+interface RefreshResult {
+  ok: boolean;
+  cacheSaved: boolean;
+  cacheError?: string;
+}
+
 interface PipefyContextType {
   token: string | null;
   user: PipefyUser | null;
@@ -32,8 +38,8 @@ interface PipefyContextType {
   membersCacheUpdatedAt: Date | null;
   setToken: (token: string, orgId: string) => Promise<{ success: boolean; error?: string }>;
   clearToken: () => Promise<void>;
-  refreshPipes: (forceRefresh?: boolean) => Promise<void>;
-  refreshMembers: (forceRefresh?: boolean) => Promise<void>;
+  refreshPipes: (forceRefresh?: boolean) => Promise<RefreshResult>;
+  refreshMembers: (forceRefresh?: boolean) => Promise<RefreshResult>;
   addHistoryRecord: (record: Omit<TransferRecord, 'id' | 'timestamp'>) => Promise<void>;
   clearHistory: () => Promise<void>;
 }
@@ -174,8 +180,26 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         // If we can query it, it exists.
         if (!error) return column;
 
-        // If the error is NOT "missing column", assume the column exists and the error is unrelated (e.g. permissions).
-        if ((error as any)?.code !== 'PGRST204') return column;
+        const errCode = (error as any)?.code;
+        const errMsg = ((error as any)?.message || '').toLowerCase();
+
+        // Column does not exist if:
+        // - PGRST204: Could not find ... column ... in schema cache
+        // - 42703: undefined_column (Postgres error)
+        // - message contains "does not exist" or "could not find"
+        const isMissingColumn =
+          errCode === 'PGRST204' ||
+          errCode === '42703' ||
+          errMsg.includes('does not exist') ||
+          errMsg.includes('could not find');
+
+        if (isMissingColumn) {
+          // Column truly missing, try next candidate
+          continue;
+        }
+
+        // For other errors (like RLS permission), assume column exists
+        return column;
       }
       return null;
     },
@@ -200,8 +224,12 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
   );
 
   // Load pipes from cache or API
-  const loadPipesWithCache = async (tokenValue: string, orgId: string, forceRefresh = false) => {
-    if (!authUser?.id) return [];
+  const loadPipesWithCache = async (
+    tokenValue: string,
+    orgId: string,
+    forceRefresh = false
+  ): Promise<{ data: PipefyPipe[]; cacheSaved: boolean; cacheError?: string }> => {
+    if (!authUser?.id) return { data: [], cacheSaved: false, cacheError: 'Usuário não autenticado' };
 
     setPipesLoading(true);
 
@@ -231,7 +259,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
             const pipesData = ((cached as any)[keys.dataCol] ?? []) as PipefyPipe[];
             setPipes(pipesData);
             setPipesLoading(false);
-            return pipesData;
+            return { data: pipesData, cacheSaved: true };
           }
         }
       }
@@ -259,22 +287,27 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
 
       if (upsertError) {
         console.error('Error caching pipes:', upsertError);
-      } else {
-        setPipesCacheUpdatedAt(now);
+        const errMsg = (upsertError as any)?.message || 'Erro desconhecido';
+        return { data: pipesData, cacheSaved: false, cacheError: errMsg };
       }
 
-      return pipesData;
+      setPipesCacheUpdatedAt(now);
+      return { data: pipesData, cacheSaved: true };
     } catch (error) {
       console.error('Error loading pipes:', error);
-      return [];
+      return { data: [], cacheSaved: false, cacheError: String(error) };
     } finally {
       setPipesLoading(false);
     }
   };
 
   // Load members from cache or API
-  const loadMembersWithCache = async (tokenValue: string, orgId: string, forceRefresh = false) => {
-    if (!authUser?.id) return [];
+  const loadMembersWithCache = async (
+    tokenValue: string,
+    orgId: string,
+    forceRefresh = false
+  ): Promise<{ data: PipefyMember[]; cacheSaved: boolean; cacheError?: string }> => {
+    if (!authUser?.id) return { data: [], cacheSaved: false, cacheError: 'Usuário não autenticado' };
 
     setMembersLoading(true);
 
@@ -304,7 +337,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
             const membersData = ((cached as any)[keys.dataCol] ?? []) as PipefyMember[];
             setMembers(membersData);
             setMembersLoading(false);
-            return membersData;
+            return { data: membersData, cacheSaved: true };
           }
         }
       }
@@ -332,14 +365,15 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
 
       if (upsertError) {
         console.error('Error caching members:', upsertError);
-      } else {
-        setMembersCacheUpdatedAt(now);
+        const errMsg = (upsertError as any)?.message || 'Erro desconhecido';
+        return { data: membersData, cacheSaved: false, cacheError: errMsg };
       }
 
-      return membersData;
+      setMembersCacheUpdatedAt(now);
+      return { data: membersData, cacheSaved: true };
     } catch (error) {
       console.error('Error loading members:', error);
-      return [];
+      return { data: [], cacheSaved: false, cacheError: String(error) };
     } finally {
       setMembersLoading(false);
     }
@@ -413,14 +447,16 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authUser?.id]);
 
-  const refreshPipes = useCallback(async (forceRefresh = true) => {
-    if (!token || !organizationId) return;
-    await loadPipesWithCache(token, organizationId, forceRefresh);
+  const refreshPipes = useCallback(async (forceRefresh = true): Promise<RefreshResult> => {
+    if (!token || !organizationId) return { ok: false, cacheSaved: false, cacheError: 'Não conectado ao Pipefy' };
+    const result = await loadPipesWithCache(token, organizationId, forceRefresh);
+    return { ok: result.data.length > 0 || result.cacheSaved, cacheSaved: result.cacheSaved, cacheError: result.cacheError };
   }, [token, organizationId, authUser?.id]);
 
-  const refreshMembers = useCallback(async (forceRefresh = true) => {
-    if (!token || !organizationId) return;
-    await loadMembersWithCache(token, organizationId, forceRefresh);
+  const refreshMembers = useCallback(async (forceRefresh = true): Promise<RefreshResult> => {
+    if (!token || !organizationId) return { ok: false, cacheSaved: false, cacheError: 'Não conectado ao Pipefy' };
+    const result = await loadMembersWithCache(token, organizationId, forceRefresh);
+    return { ok: result.data.length > 0 || result.cacheSaved, cacheSaved: result.cacheSaved, cacheError: result.cacheError };
   }, [token, organizationId, authUser?.id]);
 
   const addHistoryRecord = useCallback(async (record: Omit<TransferRecord, 'id' | 'timestamp'>) => {
