@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Key, Loader2, CheckCircle, AlertCircle, ExternalLink, Building2 } from 'lucide-react';
+import { Key, Loader2, CheckCircle, AlertCircle, ExternalLink, Building2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { usePipefy } from '@/contexts/PipefyContext';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface SettingsModalProps {
   open: boolean;
@@ -21,6 +22,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const { user, organizationId, setToken, clearToken } = usePipefy();
+  const { isAdmin } = useUserRole();
   const [newToken, setNewToken] = useState('');
   const [newOrgId, setNewOrgId] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
@@ -96,89 +98,104 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             </div>
           )}
 
-          {/* Update Token */}
-          <div className="space-y-3">
-            <Label htmlFor="newToken">Atualizar Token</Label>
-            <Input
-              id="newToken"
-              type="password"
-              placeholder="Cole o novo token aqui..."
-              value={newToken}
-              onChange={(e) => {
-                setNewToken(e.target.value);
-                setError(null);
-                setSuccess(false);
-              }}
-              className="font-mono text-sm"
-            />
-          </div>
+          {/* Update Token - Admin Only */}
+          {isAdmin ? (
+            <>
+              <div className="space-y-3">
+                <Label htmlFor="newToken">Atualizar Token</Label>
+                <Input
+                  id="newToken"
+                  type="password"
+                  placeholder="Cole o novo token aqui..."
+                  value={newToken}
+                  onChange={(e) => {
+                    setNewToken(e.target.value);
+                    setError(null);
+                    setSuccess(false);
+                  }}
+                  className="font-mono text-sm"
+                />
+              </div>
 
-          <div className="space-y-3">
-            <Label htmlFor="newOrgId" className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-muted-foreground" />
-              ID da Organização
-            </Label>
-            <Input
-              id="newOrgId"
-              type="text"
-              placeholder="Ex: 300549064"
-              value={newOrgId}
-              onChange={(e) => {
-                setNewOrgId(e.target.value);
-                setError(null);
-                setSuccess(false);
-              }}
-              className="font-mono text-sm"
-            />
-          </div>
+              <div className="space-y-3">
+                <Label htmlFor="newOrgId" className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  ID da Organização
+                </Label>
+                <Input
+                  id="newOrgId"
+                  type="text"
+                  placeholder="Ex: 300549064"
+                  value={newOrgId}
+                  onChange={(e) => {
+                    setNewOrgId(e.target.value);
+                    setError(null);
+                    setSuccess(false);
+                  }}
+                  className="font-mono text-sm"
+                />
+              </div>
 
-          {error && (
-            <Alert variant="destructive" className="animate-fade-in">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
+              {error && (
+                <Alert variant="destructive" className="animate-fade-in">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {success && (
+                <Alert className="border-success/50 bg-success/10 text-success animate-fade-in">
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertDescription>Token atualizado com sucesso!</AlertDescription>
+                </Alert>
+              )}
+
+              <a
+                href="https://app.pipefy.com/tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                Gerar novo token no Pipefy
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </>
+          ) : (
+            <Alert className="bg-muted/50">
+              <ShieldAlert className="h-4 w-4" />
+              <AlertDescription>
+                Apenas administradores podem alterar as configurações de conexão do Pipefy.
+              </AlertDescription>
             </Alert>
           )}
-
-          {success && (
-            <Alert className="border-success/50 bg-success/10 text-success animate-fade-in">
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>Token atualizado com sucesso!</AlertDescription>
-            </Alert>
-          )}
-
-          <a
-            href="https://app.pipefy.com/tokens"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-          >
-            Gerar novo token no Pipefy
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button
-            variant="outline"
-            onClick={handleDisconnect}
-            className="text-destructive hover:text-destructive"
-          >
-            Desconectar
-          </Button>
-          <Button
-            onClick={handleUpdateToken}
-            disabled={!newToken.trim() || !newOrgId.trim() || isUpdating}
-            className="btn-primary"
-          >
-            {isUpdating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Validando...
-              </>
-            ) : (
-              'Atualizar Token'
-            )}
-          </Button>
+          {isAdmin && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleDisconnect}
+                className="text-destructive hover:text-destructive"
+              >
+                Desconectar
+              </Button>
+              <Button
+                onClick={handleUpdateToken}
+                disabled={!newToken.trim() || !newOrgId.trim() || isUpdating}
+                className="btn-primary"
+              >
+                {isUpdating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Validando...
+                  </>
+                ) : (
+                  'Atualizar Token'
+                )}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
