@@ -19,6 +19,12 @@ export interface PipefyPhase {
   name: string;
 }
 
+export interface PipefyPhaseWithDone {
+  id: string;
+  name: string;
+  done: boolean;
+}
+
 export interface PipefyCard {
   id: string;
   title: string;
@@ -31,6 +37,7 @@ export interface PipefyCard {
 export interface PipefyPipe {
   id: string;
   name: string;
+  phases?: PipefyPhaseWithDone[];
 }
 
 export interface PipefyOrganization {
@@ -165,7 +172,7 @@ export async function fetchOrganizationMembers(
   return data.organization.members || [];
 }
 
-// Fetch organization pipes
+// Fetch organization pipes with phases (cached for search optimization)
 export async function fetchPipes(token: string, organizationId: string): Promise<PipefyPipe[]> {
   const query = `
     query($orgId: ID!) {
@@ -173,6 +180,11 @@ export async function fetchPipes(token: string, organizationId: string): Promise
         pipes {
           id
           name
+          phases {
+            id
+            name
+            done
+          }
         }
       }
     }
@@ -268,36 +280,44 @@ export async function searchCardsByAssignee(
   token: string,
   pipeId: string,
   email: string,
+  cachedPhases?: PipefyPhaseWithDone[],
   onProgress?: SearchProgressCallback,
   signal?: AbortSignal
 ): Promise<PipefyCard[]> {
-  // First, get all phases from the pipe
-  const phasesQuery = `
-    query($pipeId: ID!) {
-      pipe(id: $pipeId) {
-        name
-        phases {
-          id
+  let activePhases: PipefyPhaseWithDone[];
+
+  // Use cached phases if available, otherwise fetch from API
+  if (cachedPhases && cachedPhases.length > 0) {
+    activePhases = cachedPhases.filter(phase => !phase.done);
+  } else {
+    // Fallback: fetch phases from API
+    const phasesQuery = `
+      query($pipeId: ID!) {
+        pipe(id: $pipeId) {
           name
-          done
+          phases {
+            id
+            name
+            done
+          }
         }
       }
-    }
-  `;
+    `;
 
-  const phasesData = await rateLimitedRequest<{
-    pipe: {
-      name: string;
-      phases: Array<{
-        id: string;
+    const phasesData = await rateLimitedRequest<{
+      pipe: {
         name: string;
-        done: boolean;
-      }>;
-    };
-  }>(token, phasesQuery, { pipeId });
+        phases: Array<{
+          id: string;
+          name: string;
+          done: boolean;
+        }>;
+      };
+    }>(token, phasesQuery, { pipeId });
 
-  // Filter only active phases (done: false)
-  const activePhases = phasesData.pipe.phases.filter(phase => !phase.done);
+    activePhases = phasesData.pipe.phases.filter(phase => !phase.done);
+  }
+
   const totalPhases = activePhases.length;
   const allCards: PipefyCard[] = [];
 
@@ -346,6 +366,7 @@ export async function searchCardsInAllPipes(
       token,
       pipe.id,
       email,
+      pipe.phases, // Pass cached phases to avoid extra API request
       (currentPhase, totalPhases, phaseName, cardsFound) => {
         onProgress?.(
           pipeIndex + 1,
