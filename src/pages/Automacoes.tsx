@@ -4,7 +4,7 @@ import { MainLayout } from '@/layouts/MainLayout';
 import { Button } from '@/components/ui/button';
 import { AutomationCard } from '@/components/AutomationCard';
 import { AutomationFormModal } from '@/components/AutomationFormModal';
-import { ExecuteAutomationModal } from '@/components/ExecuteAutomationModal';
+import { ExecuteAutomationModal, ExecutionResult } from '@/components/ExecuteAutomationModal';
 import { DeleteAutomationModal } from '@/components/DeleteAutomationModal';
 import { HelpModal } from '@/components/HelpModal';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -171,8 +171,14 @@ export default function Automacoes() {
     }
   };
 
-  const handleConfirmExecute = async () => {
-    if (!selectedAutomation || !user) return;
+  const handleConfirmExecute = async (): Promise<ExecutionResult> => {
+    if (!selectedAutomation || !user) {
+      return {
+        success: false,
+        executionTime: 0,
+        errorMessage: 'Automação ou usuário não encontrado',
+      };
+    }
 
     setIsExecuting(true);
     const startTime = Date.now();
@@ -212,6 +218,13 @@ export default function Automacoes() {
         execution_time: executionTime,
       });
 
+      const result: ExecutionResult = {
+        success: response.ok,
+        executionTime,
+        responseStatus: response.status,
+        errorMessage: response.ok ? undefined : responseBody.substring(0, 200),
+      };
+
       if (response.ok) {
         toast({
           title: 'Automação executada',
@@ -225,8 +238,9 @@ export default function Automacoes() {
         });
       }
 
-      setExecuteOpen(false);
+      return result;
     } catch (error: any) {
+      const executionTime = Date.now() - startTime;
       console.error('Erro ao executar automação:', error);
 
       // Log error
@@ -235,7 +249,7 @@ export default function Automacoes() {
         executed_by: user.id,
         status: 'error',
         response_body: error.message || 'Erro desconhecido',
-        execution_time: Date.now() - startTime,
+        execution_time: executionTime,
       });
 
       toast({
@@ -243,6 +257,12 @@ export default function Automacoes() {
         title: 'Erro ao executar',
         description: error.message || 'Não foi possível executar a automação.',
       });
+
+      return {
+        success: false,
+        executionTime,
+        errorMessage: error.message || 'Erro desconhecido',
+      };
     } finally {
       setIsExecuting(false);
     }
