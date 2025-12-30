@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Search, RefreshCw, Loader2, X } from 'lucide-react';
+import { Search, RefreshCw, Loader2, X, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -42,10 +42,11 @@ export function SearchSection({
   onFromUserChange,
   onToUserChange,
 }: SearchSectionProps) {
-  const { token, pipes, isConnected, refreshPipes } = usePipefy();
+  const { token, pipes, isConnected, refreshPipes, refreshMembers } = usePipefy();
   const [selectedPipeId, setSelectedPipeId] = useState<string>('');
   const [isSearching, setIsSearching] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -54,6 +55,13 @@ export function SearchSection({
     await refreshPipes();
     setIsRefreshing(false);
     toast.success('Lista de pipes atualizada!');
+  };
+
+  const handleRefreshMembers = async () => {
+    setIsRefreshingMembers(true);
+    await refreshMembers();
+    setIsRefreshingMembers(false);
+    toast.success('Lista de usuários atualizada!');
   };
 
   const handleCancel = () => {
@@ -144,6 +152,23 @@ export function SearchSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        {/* Refresh Members Button */}
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshMembers}
+            disabled={isRefreshingMembers || !isConnected}
+          >
+            {isRefreshingMembers ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Users className="h-4 w-4 mr-2" />
+            )}
+            Atualizar Usuários
+          </Button>
+        </div>
+
         {/* From User */}
         <UserSearch
           label="Responsável Atual"
