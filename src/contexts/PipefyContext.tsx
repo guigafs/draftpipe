@@ -28,6 +28,8 @@ interface PipefyContextType {
   historyLoading: boolean;
   pipesLoading: boolean;
   membersLoading: boolean;
+  pipesCacheUpdatedAt: Date | null;
+  membersCacheUpdatedAt: Date | null;
   setToken: (token: string, orgId: string) => Promise<{ success: boolean; error?: string }>;
   clearToken: () => Promise<void>;
   refreshPipes: (forceRefresh?: boolean) => Promise<void>;
@@ -55,6 +57,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [pipesLoading, setPipesLoading] = useState(false);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [pipesCacheUpdatedAt, setPipesCacheUpdatedAt] = useState<Date | null>(null);
+  const [membersCacheUpdatedAt, setMembersCacheUpdatedAt] = useState<Date | null>(null);
 
   // Load Pipefy config and history from Supabase when authenticated
   useEffect(() => {
@@ -170,6 +174,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         if (!error && cached && isCacheValid(cached.updated_at)) {
           const pipesData = cached.data as unknown as PipefyPipe[];
           setPipes(pipesData);
+          setPipesCacheUpdatedAt(new Date(cached.updated_at));
           setPipesLoading(false);
           return pipesData;
         }
@@ -180,19 +185,22 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       setPipes(pipesData);
       
       // Save to cache
+      const now = new Date();
       const { error: upsertError } = await supabase
         .from('pipes_cache')
         .upsert({
           user_id: authUser.id,
           organization_id: orgId,
           data: pipesData as any,
-          updated_at: new Date().toISOString(),
+          updated_at: now.toISOString(),
         }, {
           onConflict: 'user_id,organization_id'
         });
       
       if (upsertError) {
         console.error('Error caching pipes:', upsertError);
+      } else {
+        setPipesCacheUpdatedAt(now);
       }
       
       return pipesData;
@@ -223,6 +231,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         if (!error && cached && isCacheValid(cached.updated_at)) {
           const membersData = cached.data as unknown as PipefyMember[];
           setMembers(membersData);
+          setMembersCacheUpdatedAt(new Date(cached.updated_at));
           setMembersLoading(false);
           return membersData;
         }
@@ -233,19 +242,22 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       setMembers(membersData);
       
       // Save to cache
+      const now = new Date();
       const { error: upsertError } = await supabase
         .from('members_cache')
         .upsert({
           user_id: authUser.id,
           organization_id: orgId,
           data: membersData as any,
-          updated_at: new Date().toISOString(),
+          updated_at: now.toISOString(),
         }, {
           onConflict: 'user_id,organization_id'
         });
       
       if (upsertError) {
         console.error('Error caching members:', upsertError);
+      } else {
+        setMembersCacheUpdatedAt(now);
       }
       
       return membersData;
@@ -419,6 +431,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         historyLoading,
         pipesLoading,
         membersLoading,
+        pipesCacheUpdatedAt,
+        membersCacheUpdatedAt,
         setToken: validateAndSetToken,
         clearToken,
         refreshPipes,
