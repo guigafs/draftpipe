@@ -487,28 +487,57 @@ function chunkArray<T>(array: T[], size: number): T[][] {
   return chunks;
 }
 
+// Options for inviting user to pipe
+export interface InviteOptions {
+  pipeId: string;
+  email: string;
+  roleName?: string;
+}
+
 // Batch update multiple cards in a single GraphQL request using aliases
+// Optionally includes inviteMembers mutation to add user to pipe first
 async function batchUpdateCards(
   token: string,
   cardIds: string[],
-  newAssigneeId: string
-): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[] }> {
+  newAssigneeId: string,
+  inviteOptions?: InviteOptions
+): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[]; userInvited?: boolean }> {
   const results = {
     succeeded: [] as string[],
     failed: [] as { cardId: string; error: string }[],
+    userInvited: false,
   };
 
-  // Build dynamic mutation with aliases
-  const mutations = cardIds.map((cardId, index) => `
+  // Build invite mutation if options provided
+  const inviteMutation = inviteOptions ? `
+    inviteMember: inviteMembers(input: {
+      pipe_id: ${inviteOptions.pipeId}, 
+      emails: [{ email: "${inviteOptions.email}", role_name: "${inviteOptions.roleName || 'member'}" }]
+    }) {
+      clientMutationId
+    }
+  ` : '';
+
+  // Build dynamic mutation with aliases for card updates
+  const cardMutations = cardIds.map((cardId, index) => `
     card_${index}: updateCard(input: {id: "${cardId}", assignee_ids: ["${newAssigneeId}"]}) {
       card {
         id
         title
+        assignees {
+          id
+          email
+        }
       }
     }
   `).join('\n');
 
-  const mutation = `mutation { ${mutations} }`;
+  const mutation = `mutation { 
+    ${inviteMutation}
+    ${cardMutations} 
+  }`;
+
+  console.log('[Pipefy] Executando mutation:', inviteOptions ? 'com convite ao pipe' : 'sem convite');
 
   try {
     const response = await fetch(PIPEFY_API_URL, {
@@ -522,18 +551,44 @@ async function batchUpdateCards(
 
     const data = await response.json();
 
+    console.log('[Pipefy] Resposta da API:', JSON.stringify(data, null, 2));
+
+    // Check if user was invited successfully
+    if (inviteOptions && data.data?.inviteMember) {
+      results.userInvited = true;
+      console.log('[Pipefy] Usuário adicionado ao pipe com sucesso');
+    }
+
     // Process each card result
     for (let i = 0; i < cardIds.length; i++) {
       const key = `card_${i}`;
       const cardId = cardIds[i];
 
       if (data.data?.[key]?.card) {
-        results.succeeded.push(cardId);
+        const card = data.data[key].card;
+        const assignees = card.assignees || [];
+        
+        // Validate if new assignee is in the list
+        const assigneeFound = assignees.some(
+          (a: { id: string }) => a.id === newAssigneeId
+        );
+        
+        if (assigneeFound) {
+          console.log(`[Pipefy] Card ${cardId}: Transferência confirmada`);
+          results.succeeded.push(cardId);
+        } else {
+          console.warn(`[Pipefy] Card ${cardId}: Assignee não encontrado na resposta`, assignees);
+          results.failed.push({
+            cardId,
+            error: 'Responsável não foi atribuído corretamente'
+          });
+        }
       } else {
         // Check for specific error in errors array
         const cardError = data.errors?.find((e: { path?: string[]; message: string }) => 
           e.path?.includes(key)
         );
+        console.error(`[Pipefy] Card ${cardId}: Erro na API`, cardError);
         results.failed.push({
           cardId,
           error: cardError?.message || 'Erro ao atualizar card'
@@ -541,6 +596,7 @@ async function batchUpdateCards(
       }
     }
   } catch (error) {
+    console.error('[Pipefy] Erro na requisição:', error);
     // If the entire request fails, mark all cards as failed
     for (const cardId of cardIds) {
       results.failed.push({
@@ -557,20 +613,23 @@ async function batchUpdateCards(
 export type BatchTransferProgressCallback = (
   completedBatches: number,
   totalBatches: number,
-  batchResults: { succeeded: string[]; failed: { cardId: string; error: string }[] }
+  batchResults: { succeeded: string[]; failed: { cardId: string; error: string }[]; userInvited?: boolean }
 ) => void;
 
 // Batch transfer cards with optimized mutations (up to 50 per request)
+// Optionally invites user to pipe in the first batch if inviteOptions is provided
 export async function transferCards(
   token: string,
   cardIds: string[],
   newAssigneeId: string,
   batchSize: number = 50,
-  onProgress?: BatchTransferProgressCallback
-): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[] }> {
+  onProgress?: BatchTransferProgressCallback,
+  inviteOptions?: InviteOptions
+): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[]; userInvited?: boolean }> {
   const results = {
     succeeded: [] as string[],
     failed: [] as { cardId: string; error: string }[],
+    userInvited: false,
   };
 
   // Split cards into batches
@@ -579,7 +638,16 @@ export async function transferCards(
 
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i];
-    const batchResult = await batchUpdateCards(token, batch, newAssigneeId);
+    
+    // Only include invite in the first batch
+    const batchInviteOptions = i === 0 ? inviteOptions : undefined;
+    
+    const batchResult = await batchUpdateCards(token, batch, newAssigneeId, batchInviteOptions);
+    
+    // Track if user was invited
+    if (batchResult.userInvited) {
+      results.userInvited = true;
+    }
     
     // Aggregate results
     results.succeeded.push(...batchResult.succeeded);
