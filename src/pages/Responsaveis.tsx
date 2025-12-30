@@ -1,18 +1,16 @@
 import { useState, useCallback } from 'react';
-import { ArrowRightLeft, History as HistoryIcon } from 'lucide-react';
+import { ArrowRightLeft } from 'lucide-react';
 import { MainLayout } from '@/layouts/MainLayout';
 import { ConfigScreen } from '@/components/ConfigScreen';
 import { SearchSection } from '@/components/SearchSection';
 import { CardsList } from '@/components/CardsList';
 import { TransferModal } from '@/components/TransferModal';
 import { ProgressModal } from '@/components/ProgressModal';
-import { HistorySection } from '@/components/HistorySection';
 import { HelpModal } from '@/components/HelpModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { usePipefy } from '@/contexts/PipefyContext';
 import { PipefyCard, PipefyMember, transferCards } from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 
 interface ProgressItem {
@@ -213,18 +211,12 @@ export default function Responsaveis() {
         />
 
         {/* Main Content */}
-        <Tabs defaultValue="cards" className="space-y-4">
+        <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <TabsList className="bg-muted/50">
-              <TabsTrigger value="cards" className="gap-2">
-                <ArrowRightLeft className="h-4 w-4" />
-                Cards
-              </TabsTrigger>
-              <TabsTrigger value="history" className="gap-2">
-                <HistoryIcon className="h-4 w-4" />
-                Histórico
-              </TabsTrigger>
-            </TabsList>
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5" />
+              Cards para Transferir
+            </h2>
 
             {selectedIds.size > 0 && (
               <Button onClick={handleTransferClick} className="btn-success gap-2 animate-scale-in">
@@ -234,19 +226,13 @@ export default function Responsaveis() {
             )}
           </div>
 
-          <TabsContent value="cards" className="mt-4">
-            <CardsList
-              cards={cards}
-              selectedIds={selectedIds}
-              onSelectionChange={setSelectedIds}
-              isLoading={searchLoading}
-            />
-          </TabsContent>
-
-          <TabsContent value="history" className="mt-4">
-            <HistorySection />
-          </TabsContent>
-        </Tabs>
+          <CardsList
+            cards={cards}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            isLoading={searchLoading}
+          />
+        </div>
       </div>
 
       {/* Modals */}
