@@ -14,6 +14,7 @@ interface TransferRecord {
   failed: { cardId: string; error: string }[];
   pipeName: string;
   pipeId: string;
+  performedByEmail: string;
 }
 
 interface RefreshResult {
@@ -120,9 +121,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase
         .from('transfer_history')
         .select('*')
-        .eq('user_id', authUser.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       
       if (error) {
         console.error('Error loading history:', error);
@@ -144,6 +144,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
           })) || [],
           pipeName: row.pipe_name,
           pipeId: row.pipe_id,
+          performedByEmail: row.performed_by_email || row.from_user_email,
         }));
         setHistory(records);
       }
@@ -511,6 +512,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     });
 
     try {
+      const performedByEmail = authUser.email || record.fromEmail;
+      
       const { data, error } = await supabase
         .from('transfer_history')
         .insert({
@@ -522,6 +525,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
           cards: cards,
           succeeded_count: record.succeeded.length,
           failed_count: record.failed.length,
+          performed_by_email: performedByEmail,
         })
         .select()
         .single();
@@ -536,6 +540,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         ...record,
         id: data.id,
         timestamp: new Date(data.created_at),
+        performedByEmail: performedByEmail,
       };
       
       setHistory(prev => [newRecord, ...prev].slice(0, 50));
