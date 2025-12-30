@@ -144,7 +144,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
           })) || [],
           pipeName: row.pipe_name,
           pipeId: row.pipe_id,
-          performedByEmail: row.performed_by_email || row.from_user_email,
+          performedByEmail: row.performed_by_email || '',
         }));
         setHistory(records);
       }
