@@ -166,7 +166,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
   type CacheKeys = {
     orgCol: string | null;
     dataCol: string;
-    updatedAtCol: string;
+    updatedAtCol: string | null; // null if no timestamp column exists
     onConflict: string | null;
   };
 
@@ -213,11 +213,16 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
 
       const orgCol = await detectExistingColumn(table, ['organization_id', 'pipefy_org_id', 'org_id']);
       const dataCol = (await detectExistingColumn(table, ['data'])) ?? 'data';
-      const updatedAtCol = (await detectExistingColumn(table, ['updated_at', 'updatedAt'])) ?? 'updated_at';
+      // Try multiple timestamp column names; null if none exist
+      const updatedAtCol = await detectExistingColumn(table, ['updated_at', 'updatedAt', 'created_at', 'createdAt']);
       const onConflict = orgCol ? `user_id,${orgCol}` : 'user_id';
 
       const keys: CacheKeys = { orgCol, dataCol, updatedAtCol, onConflict };
       cacheKeysRef.current[table] = keys;
+      
+      // Diagnostic log (temporary)
+      console.info(`[Cache] ${table} keys detected:`, { orgCol, dataCol, updatedAtCol, onConflict });
+      
       return keys;
     },
     [detectExistingColumn]
@@ -238,24 +243,36 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
 
       // Try to load from cache first
       if (!forceRefresh) {
+        // Build select columns dynamically
+        const selectCols = keys.updatedAtCol 
+          ? `${keys.dataCol}, ${keys.updatedAtCol}` 
+          : keys.dataCol;
+        
         let query = supabase
           .from('pipes_cache')
-          .select(`${keys.dataCol}, ${keys.updatedAtCol}`)
+          .select(selectCols)
           .eq('user_id', authUser.id);
 
         if (keys.orgCol) {
           query = query.eq(keys.orgCol, orgId);
-        } else {
+        } else if (keys.updatedAtCol) {
           query = query.order(keys.updatedAtCol, { ascending: false }).limit(1);
+        } else {
+          query = query.limit(1);
         }
 
         const { data: cached, error } = await query.maybeSingle();
 
         if (!error && cached) {
-          const updatedAtRaw = (cached as any)[keys.updatedAtCol] as string | null;
+          const updatedAtRaw = keys.updatedAtCol 
+            ? (cached as any)[keys.updatedAtCol] as string | null 
+            : null;
           if (updatedAtRaw) setPipesCacheUpdatedAt(new Date(updatedAtRaw));
 
-          if (isCacheValid(updatedAtRaw ?? null)) {
+          // If no timestamp column, treat cache as expired (always fetch fresh)
+          const cacheValid = keys.updatedAtCol ? isCacheValid(updatedAtRaw) : false;
+          
+          if (cacheValid) {
             const pipesData = ((cached as any)[keys.dataCol] ?? []) as PipefyPipe[];
             setPipes(pipesData);
             setPipesLoading(false);
@@ -273,8 +290,11 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       const payload: any = {
         user_id: authUser.id,
         [keys.dataCol]: pipesData as any,
-        [keys.updatedAtCol]: now.toISOString(),
       };
+      // Only include timestamp if column exists
+      if (keys.updatedAtCol) {
+        payload[keys.updatedAtCol] = now.toISOString();
+      }
       if (keys.orgCol) payload[keys.orgCol] = orgId;
 
       const upsertOptions = keys.onConflict ? ({ onConflict: keys.onConflict } as any) : undefined;
@@ -316,24 +336,36 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
 
       // Try to load from cache first
       if (!forceRefresh) {
+        // Build select columns dynamically
+        const selectCols = keys.updatedAtCol 
+          ? `${keys.dataCol}, ${keys.updatedAtCol}` 
+          : keys.dataCol;
+        
         let query = supabase
           .from('members_cache')
-          .select(`${keys.dataCol}, ${keys.updatedAtCol}`)
+          .select(selectCols)
           .eq('user_id', authUser.id);
 
         if (keys.orgCol) {
           query = query.eq(keys.orgCol, orgId);
-        } else {
+        } else if (keys.updatedAtCol) {
           query = query.order(keys.updatedAtCol, { ascending: false }).limit(1);
+        } else {
+          query = query.limit(1);
         }
 
         const { data: cached, error } = await query.maybeSingle();
 
         if (!error && cached) {
-          const updatedAtRaw = (cached as any)[keys.updatedAtCol] as string | null;
+          const updatedAtRaw = keys.updatedAtCol 
+            ? (cached as any)[keys.updatedAtCol] as string | null 
+            : null;
           if (updatedAtRaw) setMembersCacheUpdatedAt(new Date(updatedAtRaw));
 
-          if (isCacheValid(updatedAtRaw ?? null)) {
+          // If no timestamp column, treat cache as expired (always fetch fresh)
+          const cacheValid = keys.updatedAtCol ? isCacheValid(updatedAtRaw) : false;
+          
+          if (cacheValid) {
             const membersData = ((cached as any)[keys.dataCol] ?? []) as PipefyMember[];
             setMembers(membersData);
             setMembersLoading(false);
@@ -351,8 +383,11 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       const payload: any = {
         user_id: authUser.id,
         [keys.dataCol]: membersData as any,
-        [keys.updatedAtCol]: now.toISOString(),
       };
+      // Only include timestamp if column exists
+      if (keys.updatedAtCol) {
+        payload[keys.updatedAtCol] = now.toISOString();
+      }
       if (keys.orgCol) payload[keys.orgCol] = orgId;
 
       const upsertOptions = keys.onConflict ? ({ onConflict: keys.onConflict } as any) : undefined;
