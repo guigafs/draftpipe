@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { usePipefy } from '@/contexts/PipefyContext';
 
-export function HistorySection() {
+export function TransferHistorySection() {
   const { history, historyLoading, clearHistory } = usePipefy();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -146,7 +146,7 @@ export function HistorySection() {
       </CardHeader>
 
       <CardContent className="pt-0">
-        <ScrollArea className="h-[400px]">
+        <ScrollArea className="h-[500px]">
           <div className="space-y-3">
             {history.map((record, index) => (
               <div

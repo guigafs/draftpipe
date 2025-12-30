@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Responsaveis from "./pages/Responsaveis";
 import Automacoes from "./pages/Automacoes";
+import Historico from "./pages/Historico";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,11 @@ const App = () => (
               <Route path="/automacoes" element={
                 <ProtectedRoute>
                   <Automacoes />
+                </ProtectedRoute>
+              } />
+              <Route path="/historico" element={
+                <ProtectedRoute>
+                  <Historico />
                 </ProtectedRoute>
               } />
               <Route path="*" element={<NotFound />} />

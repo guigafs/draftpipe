@@ -1,4 +1,4 @@
-import { Users, Zap } from 'lucide-react';
+import { Users, Zap, History } from 'lucide-react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   Sidebar,
@@ -24,6 +24,11 @@ const menuItems = [
     title: 'Automações',
     url: '/automacoes',
     icon: Zap,
+  },
+  {
+    title: 'Histórico',
+    url: '/historico',
+    icon: History,
   },
 ];
 
