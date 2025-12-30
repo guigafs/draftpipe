@@ -163,6 +163,7 @@ export default function Responsaveis() {
       failed: result.failed,
       pipeName,
       pipeId: pipeIds.join(','),
+      performedByEmail: '', // Will be filled by context with auth user email
     });
 
     // Show toast
