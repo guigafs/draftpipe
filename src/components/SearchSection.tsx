@@ -152,8 +152,8 @@ export function SearchSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Refresh Members Button */}
-        <div className="flex justify-end">
+        {/* Refresh Buttons */}
+        <div className="flex justify-end gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -166,6 +166,19 @@ export function SearchSection({
               <Users className="h-4 w-4 mr-2" />
             )}
             Atualizar Usuários
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefreshPipes}
+            disabled={isRefreshing || !isConnected}
+          >
+            {isRefreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            Atualizar Pipes
           </Button>
         </div>
 
@@ -181,33 +194,22 @@ export function SearchSection({
         {/* Pipe Selection */}
         <div className="space-y-2">
           <Label className="text-sm font-medium">Pipe</Label>
-          <div className="flex gap-2">
-            <Select value={selectedPipeId} onValueChange={setSelectedPipeId}>
-              <SelectTrigger className="flex-1">
-                <SelectValue placeholder="Selecione um pipe..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  🔍 Todos os pipes
+          <Select value={selectedPipeId} onValueChange={setSelectedPipeId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione um pipe..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                🔍 Todos os pipes
+              </SelectItem>
+              <Separator className="my-1" />
+              {[...pipes].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true })).map((pipe) => (
+                <SelectItem key={pipe.id} value={pipe.id}>
+                  {pipe.name}
                 </SelectItem>
-                <Separator className="my-1" />
-                {pipes.map((pipe) => (
-                  <SelectItem key={pipe.id} value={pipe.id}>
-                    {pipe.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleRefreshPipes}
-              disabled={isRefreshing}
-              title="Atualizar lista de pipes"
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* To User */}
