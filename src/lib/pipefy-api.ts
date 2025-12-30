@@ -457,33 +457,119 @@ export async function updateCardAssignee(
   }
 }
 
-// Batch transfer cards
-export async function transferCards(
+// Helper to split array into chunks
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
+
+// Batch update multiple cards in a single GraphQL request using aliases
+async function batchUpdateCards(
   token: string,
   cardIds: string[],
-  newAssigneeId: string,
-  onProgress?: (completed: number, total: number, cardId: string, success: boolean, error?: string) => void
+  newAssigneeId: string
 ): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[] }> {
   const results = {
     succeeded: [] as string[],
     failed: [] as { cardId: string; error: string }[],
   };
 
-  for (let i = 0; i < cardIds.length; i++) {
-    const cardId = cardIds[i];
-    const result = await updateCardAssignee(token, cardId, [newAssigneeId]);
-    
-    if (result.success) {
-      results.succeeded.push(cardId);
-      onProgress?.(i + 1, cardIds.length, cardId, true);
-    } else {
-      results.failed.push({ cardId, error: result.error || 'Erro desconhecido' });
-      onProgress?.(i + 1, cardIds.length, cardId, false, result.error);
+  // Build dynamic mutation with aliases
+  const mutations = cardIds.map((cardId, index) => `
+    card_${index}: updateCard(input: {id: "${cardId}", assignee_ids: ["${newAssigneeId}"]}) {
+      card {
+        id
+        title
+      }
     }
+  `).join('\n');
+
+  const mutation = `mutation { ${mutations} }`;
+
+  try {
+    const response = await fetch(PIPEFY_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: mutation }),
+    });
+
+    const data = await response.json();
+
+    // Process each card result
+    for (let i = 0; i < cardIds.length; i++) {
+      const key = `card_${i}`;
+      const cardId = cardIds[i];
+
+      if (data.data?.[key]?.card) {
+        results.succeeded.push(cardId);
+      } else {
+        // Check for specific error in errors array
+        const cardError = data.errors?.find((e: { path?: string[]; message: string }) => 
+          e.path?.includes(key)
+        );
+        results.failed.push({
+          cardId,
+          error: cardError?.message || 'Erro ao atualizar card'
+        });
+      }
+    }
+  } catch (error) {
+    // If the entire request fails, mark all cards as failed
+    for (const cardId of cardIds) {
+      results.failed.push({
+        cardId,
+        error: error instanceof Error ? error.message : 'Erro de conexão'
+      });
+    }
+  }
+
+  return results;
+}
+
+// Progress callback for batch transfer
+export type BatchTransferProgressCallback = (
+  completedBatches: number,
+  totalBatches: number,
+  batchResults: { succeeded: string[]; failed: { cardId: string; error: string }[] }
+) => void;
+
+// Batch transfer cards with optimized mutations (up to 50 per request)
+export async function transferCards(
+  token: string,
+  cardIds: string[],
+  newAssigneeId: string,
+  batchSize: number = 50,
+  onProgress?: BatchTransferProgressCallback
+): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[] }> {
+  const results = {
+    succeeded: [] as string[],
+    failed: [] as { cardId: string; error: string }[],
+  };
+
+  // Split cards into batches
+  const batches = chunkArray(cardIds, batchSize);
+  const totalBatches = batches.length;
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    const batchResult = await batchUpdateCards(token, batch, newAssigneeId);
     
-    // Small delay between operations to respect rate limits
-    if (i < cardIds.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+    // Aggregate results
+    results.succeeded.push(...batchResult.succeeded);
+    results.failed.push(...batchResult.failed);
+    
+    // Report progress
+    onProgress?.(i + 1, totalBatches, batchResult);
+    
+    // Small delay between batches to respect rate limits
+    if (i < batches.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
 

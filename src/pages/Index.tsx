@@ -41,7 +41,10 @@ export default function Index() {
 
   // Progress State
   const [progressItems, setProgressItems] = useState<ProgressItem[]>([]);
-  const [progressCount, setProgressCount] = useState(0);
+  const [completedBatches, setCompletedBatches] = useState(0);
+  const [totalBatches, setTotalBatches] = useState(0);
+  const [successCount, setSuccessCount] = useState(0);
+  const [errorCount, setErrorCount] = useState(0);
   const [isTransferComplete, setIsTransferComplete] = useState(false);
 
   const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string) => {
@@ -80,7 +83,14 @@ export default function Index() {
     setConfirmOpen(false);
     setProgressOpen(true);
     setIsTransferComplete(false);
-    setProgressCount(0);
+    setCompletedBatches(0);
+    setSuccessCount(0);
+    setErrorCount(0);
+
+    // Calculate total batches (50 cards per batch)
+    const batchSize = 50;
+    const batches = Math.ceil(selectedCards.length / batchSize);
+    setTotalBatches(batches);
 
     // Initialize progress items
     const initialItems: ProgressItem[] = selectedCards.map((card) => ({
@@ -90,22 +100,38 @@ export default function Index() {
     }));
     setProgressItems(initialItems);
 
-    // Execute transfer - we already have the user ID from selected member
+    // Execute transfer with batching
     const cardIds = selectedCards.map((c) => c.id);
 
     const result = await transferCards(
       token,
       cardIds,
       selectedToUser.user.id,
-      (completed, total, cardId, success, error) => {
-        setProgressCount(completed);
-        setProgressItems((prev) =>
-          prev.map((item) =>
-            item.cardId === cardId
-              ? { ...item, status: success ? 'success' : 'error', error }
-              : item
-          )
-        );
+      batchSize,
+      (completed, total, batchResults) => {
+        setCompletedBatches(completed);
+        
+        // Update items based on batch results
+        setProgressItems((prev) => {
+          const updated = [...prev];
+          for (const cardId of batchResults.succeeded) {
+            const idx = updated.findIndex(item => item.cardId === cardId);
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], status: 'success' };
+            }
+          }
+          for (const { cardId, error } of batchResults.failed) {
+            const idx = updated.findIndex(item => item.cardId === cardId);
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], status: 'error', error };
+            }
+          }
+          return updated;
+        });
+        
+        // Update counts
+        setSuccessCount(prev => prev + batchResults.succeeded.length);
+        setErrorCount(prev => prev + batchResults.failed.length);
       }
     );
 
@@ -235,8 +261,10 @@ export default function Index() {
         open={progressOpen}
         onOpenChange={setProgressOpen}
         cards={selectedCards}
-        progress={progressCount}
-        total={selectedCards.length}
+        completedBatches={completedBatches}
+        totalBatches={totalBatches}
+        successCount={successCount}
+        errorCount={errorCount}
         items={progressItems}
         isComplete={isTransferComplete}
         onClose={handleProgressClose}
