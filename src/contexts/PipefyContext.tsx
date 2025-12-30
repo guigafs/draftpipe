@@ -559,10 +559,11 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     if (!authUser?.id) return;
     
     try {
+      // RLS policy ensures only admins can delete
       const { error } = await supabase
         .from('transfer_history')
         .delete()
-        .eq('user_id', authUser.id);
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows
 
       if (error) {
         console.error('Error clearing history:', error);

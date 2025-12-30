@@ -30,9 +30,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { usePipefy } from '@/contexts/PipefyContext';
 import { HistoryFilters, HistoryFiltersState } from './HistoryFilters';
+import { useUserRole } from '@/hooks/useUserRole';
 
 export function TransferHistorySection() {
   const { history, historyLoading, clearHistory } = usePipefy();
+  const { isAdmin } = useUserRole();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filters, setFilters] = useState<HistoryFiltersState>({
     performedBy: null,
@@ -195,28 +197,30 @@ export function TransferHistorySection() {
               <Download className="h-4 w-4" />
               Exportar
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
-                  <Trash2 className="h-4 w-4" />
-                  Limpar
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Limpar histórico?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Esta ação não pode ser desfeita. Todo o histórico de transferências será removido.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={clearHistory} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            {isAdmin && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5 text-destructive hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
                     Limpar
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Limpar histórico?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta ação não pode ser desfeita. Todo o histórico de transferências será removido.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={clearHistory} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Limpar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         </div>
 
