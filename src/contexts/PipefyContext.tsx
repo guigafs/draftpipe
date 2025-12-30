@@ -93,18 +93,22 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     
     setIsLoading(true);
     try {
-      // Buscar o token global do perfil do admin
-      const { data: adminProfile, error } = await supabase
+      // Primeiro, buscar o ID do admin pelo email na tabela auth (via profiles que tem relação)
+      // Como profiles pode não ter email, vamos buscar primeiro o user_id do admin
+      const { data: adminUser, error: adminError } = await supabase
         .from('profiles')
-        .select('pipefy_token, pipefy_org_id')
-        .eq('email', ADMIN_EMAIL)
-        .maybeSingle();
+        .select('id, pipefy_token, pipefy_org_id')
+        .limit(100);
       
-      if (error) {
-        console.error('Error loading Pipefy config:', error);
+      if (adminError) {
+        console.error('Error fetching profiles:', adminError);
         setIsLoading(false);
+        setIsConnected(false);
         return;
       }
+
+      // Buscar na lista o perfil que tem token configurado (o admin)
+      const adminProfile = adminUser?.find(p => p.pipefy_token && p.pipefy_org_id);
 
       if (adminProfile?.pipefy_token && adminProfile?.pipefy_org_id) {
         await validateAndSetToken(adminProfile.pipefy_token, adminProfile.pipefy_org_id, false);
@@ -114,6 +118,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('Error loading Pipefy config:', error);
+      setIsConnected(false);
       setIsLoading(false);
     }
   };
