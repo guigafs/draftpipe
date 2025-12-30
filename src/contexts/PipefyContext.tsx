@@ -105,6 +105,7 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       if (profile?.pipefy_token && profile?.pipefy_org_id) {
         await validateAndSetToken(profile.pipefy_token, profile.pipefy_org_id, false);
       } else {
+        setIsConnected(false);
         setIsLoading(false);
       }
     } catch (error) {
@@ -430,15 +431,17 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       setUser(result.user);
       setIsConnected(true);
       
-      // Save to Supabase profile
+      // Save to Supabase profile using upsert to handle new users
       if (saveToProfile && authUser?.id) {
         const { error } = await supabase
           .from('profiles')
-          .update({
+          .upsert({
+            id: authUser.id,
             pipefy_token: newToken,
             pipefy_org_id: orgId,
-          })
-          .eq('id', authUser.id);
+          }, {
+            onConflict: 'id'
+          });
         
         if (error) {
           console.error('Error saving Pipefy config:', error);
@@ -471,15 +474,17 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     setMembers([]);
     setIsConnected(false);
     
-    // Clear from Supabase profile
+    // Clear from Supabase profile using upsert
     if (authUser?.id) {
       await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: authUser.id,
           pipefy_token: null,
           pipefy_org_id: null,
-        })
-        .eq('id', authUser.id);
+        }, {
+          onConflict: 'id'
+        });
     }
   }, [authUser?.id]);
 
