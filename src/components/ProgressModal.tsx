@@ -24,8 +24,10 @@ interface ProgressModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cards: PipefyCard[];
-  progress: number;
-  total: number;
+  completedBatches: number;
+  totalBatches: number;
+  successCount: number;
+  errorCount: number;
   items: ProgressItem[];
   isComplete: boolean;
   onClose: () => void;
@@ -35,19 +37,18 @@ export function ProgressModal({
   open,
   onOpenChange,
   cards,
-  progress,
-  total,
+  completedBatches,
+  totalBatches,
+  successCount,
+  errorCount,
   items,
   isComplete,
   onClose,
 }: ProgressModalProps) {
   const [showErrors, setShowErrors] = useState(false);
 
-  const successCount = items.filter((i) => i.status === 'success').length;
-  const errorCount = items.filter((i) => i.status === 'error').length;
   const errorItems = items.filter((i) => i.status === 'error');
-
-  const percentage = total > 0 ? Math.round((progress / total) * 100) : 0;
+  const percentage = totalBatches > 0 ? Math.round((completedBatches / totalBatches) * 100) : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,7 +60,7 @@ export function ProgressModal({
           <DialogDescription>
             {isComplete
               ? 'A operação foi finalizada'
-              : `Processando ${progress} de ${total} cards`}
+              : `Processando lote ${completedBatches} de ${totalBatches} (${cards.length} cards)`}
           </DialogDescription>
         </DialogHeader>
 

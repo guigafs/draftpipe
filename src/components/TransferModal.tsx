@@ -65,6 +65,12 @@ export function TransferModal({
               <span className="text-sm text-muted-foreground">Quantidade:</span>
               <span className="font-semibold text-primary">{cards.length} card(s)</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Requisições na API:</span>
+              <span className="font-medium text-sm text-primary">
+                {Math.ceil(cards.length / 50)} requisição(ões)
+              </span>
+            </div>
           </div>
 
           {/* Expandable Card List */}

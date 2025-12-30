@@ -16,6 +16,7 @@ import { usePipefy } from '@/contexts/PipefyContext';
 import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember } from '@/lib/pipefy-api';
 import { toast } from 'sonner';
 import { UserSearch } from './UserSearch';
+import { SearchConfirmModal } from './SearchConfirmModal';
 
 interface SearchSectionProps {
   onCardsFound: (cards: PipefyCard[], pipeName: string) => void;
@@ -48,6 +49,7 @@ export function SearchSection({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
+  const [showSearchConfirm, setShowSearchConfirm] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleRefreshPipes = async () => {
@@ -71,7 +73,14 @@ export function SearchSection({
     }
   };
 
-  const handleSearch = async () => {
+  const handleSearchClick = () => {
+    if (!token || !selectedPipeId || !selectedFromUser) return;
+    setShowSearchConfirm(true);
+  };
+
+  const handleConfirmSearch = async () => {
+    setShowSearchConfirm(false);
+    
     if (!token || !selectedPipeId || !selectedFromUser) return;
 
     const controller = new AbortController();
@@ -259,7 +268,7 @@ export function SearchSection({
 
         {/* Search Button */}
         <Button
-          onClick={handleSearch}
+          onClick={handleSearchClick}
           disabled={!canSearch || isSearching}
           className="w-full btn-primary h-11"
         >
@@ -276,6 +285,16 @@ export function SearchSection({
           )}
         </Button>
       </CardContent>
+
+      {/* Search Confirmation Modal */}
+      <SearchConfirmModal
+        open={showSearchConfirm}
+        onOpenChange={setShowSearchConfirm}
+        fromEmail={selectedFromUser?.user.email || ''}
+        selectedPipeId={selectedPipeId}
+        pipes={pipes}
+        onConfirm={handleConfirmSearch}
+      />
     </Card>
   );
 }
