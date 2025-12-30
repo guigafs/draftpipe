@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogIn, UserPlus, Eye, EyeOff, Mail, Lock, User, CheckCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import logo from '@/assets/logo.png';
 
 export default function Login() {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
@@ -74,9 +75,7 @@ export default function Login() {
       <div className="w-full max-w-md animate-fade-in">
         <Card className="border-border shadow-lg">
           <CardHeader className="space-y-4 text-center">
-            <div className="mx-auto h-14 w-14 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-2xl">D</span>
-            </div>
+            <img src={logo} alt="Draft Pipefy" className="mx-auto h-14 w-14 rounded-xl" />
             <div>
               <CardTitle className="text-2xl font-semibold">Draft Pipefy</CardTitle>
               <CardDescription className="mt-2">

@@ -7,6 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import logo from '@/assets/logo.png';
 
 interface HeaderProps {
   onSettingsClick: () => void;
@@ -21,9 +22,7 @@ export function Header({ onSettingsClick, onHelpClick }: HeaderProps) {
       <div className="container flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">D</span>
-            </div>
+            <img src={logo} alt="Draft Pipefy" className="h-8 w-8 rounded-lg" />
             <h1 className="text-xl font-semibold tracking-tight">Draft Pipefy</h1>
           </div>
           
