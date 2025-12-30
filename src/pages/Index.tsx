@@ -37,6 +37,7 @@ export default function Index() {
   const [selectedFromUser, setSelectedFromUser] = useState<PipefyMember | null>(null);
   const [selectedToUser, setSelectedToUser] = useState<PipefyMember | null>(null);
   const [pipeName, setPipeName] = useState('');
+  const [pipeId, setPipeId] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
 
   // Progress State
@@ -47,9 +48,10 @@ export default function Index() {
   const [errorCount, setErrorCount] = useState(0);
   const [isTransferComplete, setIsTransferComplete] = useState(false);
 
-  const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string) => {
+  const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string, id: string) => {
     setCards(foundCards);
     setPipeName(pipe);
+    setPipeId(id);
     setSelectedIds(new Set());
   }, []);
 
@@ -146,6 +148,7 @@ export default function Index() {
       succeeded: result.succeeded,
       failed: result.failed,
       pipeName,
+      pipeId,
     });
 
     // Show toast

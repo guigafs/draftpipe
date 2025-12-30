@@ -30,7 +30,7 @@ import {
 import { usePipefy } from '@/contexts/PipefyContext';
 
 export function HistorySection() {
-  const { history, clearHistory } = usePipefy();
+  const { history, historyLoading, clearHistory } = usePipefy();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const getStatusBadge = (succeeded: number, failed: number) => {
@@ -80,6 +80,17 @@ export function HistorySection() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  if (historyLoading) {
+    return (
+      <Card className="shadow-soft">
+        <CardContent className="py-12 text-center">
+          <div className="mx-auto mb-4 h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-muted-foreground">Carregando histórico...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (history.length === 0) {
     return (
