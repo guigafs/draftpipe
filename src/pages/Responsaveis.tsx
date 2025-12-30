@@ -9,7 +9,7 @@ import { ProgressModal } from '@/components/ProgressModal';
 import { HelpModal } from '@/components/HelpModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { PipefyCard, PipefyMember, transferCards } from '@/lib/pipefy-api';
+import { PipefyCard, PipefyMember, transferCards, InviteOptions } from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 
@@ -103,6 +103,13 @@ export default function Responsaveis() {
     // Execute transfer with batching
     const cardIds = selectedCards.map((c) => c.id);
 
+    // Prepare invite options to add user to pipe automatically if not a member
+    const inviteOptions: InviteOptions | undefined = pipeId && selectedToUser.user.email ? {
+      pipeId,
+      email: selectedToUser.user.email,
+      roleName: 'member'
+    } : undefined;
+
     const result = await transferCards(
       token,
       cardIds,
@@ -132,12 +139,19 @@ export default function Responsaveis() {
         // Update counts
         setSuccessCount(prev => prev + batchResults.succeeded.length);
         setErrorCount(prev => prev + batchResults.failed.length);
-      }
+      },
+      inviteOptions
     );
 
     setIsTransferComplete(true);
 
-    // Add to history
+    // Show toast if user was added to pipe
+    if (result.userInvited) {
+      toast({
+        title: 'Usuário adicionado ao pipe',
+        description: `${selectedToUser.user.name} foi adicionado automaticamente ao pipe.`,
+      });
+    }
     addHistoryRecord({
       fromEmail: selectedFromUser?.user.email || '',
       toEmail: selectedToUser.user.email,
