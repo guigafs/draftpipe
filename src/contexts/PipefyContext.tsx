@@ -26,15 +26,20 @@ interface PipefyContextType {
   isLoading: boolean;
   history: TransferRecord[];
   historyLoading: boolean;
+  pipesLoading: boolean;
+  membersLoading: boolean;
   setToken: (token: string, orgId: string) => Promise<{ success: boolean; error?: string }>;
   clearToken: () => Promise<void>;
-  refreshPipes: () => Promise<void>;
-  refreshMembers: () => Promise<void>;
+  refreshPipes: (forceRefresh?: boolean) => Promise<void>;
+  refreshMembers: (forceRefresh?: boolean) => Promise<void>;
   addHistoryRecord: (record: Omit<TransferRecord, 'id' | 'timestamp'>) => Promise<void>;
   clearHistory: () => Promise<void>;
 }
 
 const PipefyContext = createContext<PipefyContextType | null>(null);
+
+// Cache expiration time: 1 hour
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 export function PipefyProvider({ children }: { children: React.ReactNode }) {
   const { user: authUser, isAuthenticated } = useAuth();
@@ -48,6 +53,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [history, setHistory] = useState<TransferRecord[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [pipesLoading, setPipesLoading] = useState(false);
+  const [membersLoading, setMembersLoading] = useState(false);
 
   // Load Pipefy config and history from Supabase when authenticated
   useEffect(() => {
@@ -137,6 +144,119 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Check if cache is valid (not expired)
+  const isCacheValid = (updatedAt: string | null): boolean => {
+    if (!updatedAt) return false;
+    const cacheTime = new Date(updatedAt).getTime();
+    return Date.now() - cacheTime < CACHE_TTL_MS;
+  };
+
+  // Load pipes from cache or API
+  const loadPipesWithCache = async (tokenValue: string, orgId: string, forceRefresh = false) => {
+    if (!authUser?.id) return [];
+    
+    setPipesLoading(true);
+    
+    try {
+      // Try to load from cache first
+      if (!forceRefresh) {
+        const { data: cached, error } = await supabase
+          .from('pipes_cache')
+          .select('data, updated_at')
+          .eq('user_id', authUser.id)
+          .eq('organization_id', orgId)
+          .maybeSingle();
+        
+        if (!error && cached && isCacheValid(cached.updated_at)) {
+          const pipesData = cached.data as unknown as PipefyPipe[];
+          setPipes(pipesData);
+          setPipesLoading(false);
+          return pipesData;
+        }
+      }
+      
+      // Fetch from API
+      const pipesData = await fetchPipes(tokenValue, orgId);
+      setPipes(pipesData);
+      
+      // Save to cache
+      const { error: upsertError } = await supabase
+        .from('pipes_cache')
+        .upsert({
+          user_id: authUser.id,
+          organization_id: orgId,
+          data: pipesData as any,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,organization_id'
+        });
+      
+      if (upsertError) {
+        console.error('Error caching pipes:', upsertError);
+      }
+      
+      return pipesData;
+    } catch (error) {
+      console.error('Error loading pipes:', error);
+      return [];
+    } finally {
+      setPipesLoading(false);
+    }
+  };
+
+  // Load members from cache or API
+  const loadMembersWithCache = async (tokenValue: string, orgId: string, forceRefresh = false) => {
+    if (!authUser?.id) return [];
+    
+    setMembersLoading(true);
+    
+    try {
+      // Try to load from cache first
+      if (!forceRefresh) {
+        const { data: cached, error } = await supabase
+          .from('members_cache')
+          .select('data, updated_at')
+          .eq('user_id', authUser.id)
+          .eq('organization_id', orgId)
+          .maybeSingle();
+        
+        if (!error && cached && isCacheValid(cached.updated_at)) {
+          const membersData = cached.data as unknown as PipefyMember[];
+          setMembers(membersData);
+          setMembersLoading(false);
+          return membersData;
+        }
+      }
+      
+      // Fetch from API
+      const membersData = await fetchOrganizationMembers(tokenValue, orgId);
+      setMembers(membersData);
+      
+      // Save to cache
+      const { error: upsertError } = await supabase
+        .from('members_cache')
+        .upsert({
+          user_id: authUser.id,
+          organization_id: orgId,
+          data: membersData as any,
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,organization_id'
+        });
+      
+      if (upsertError) {
+        console.error('Error caching members:', upsertError);
+      }
+      
+      return membersData;
+    } catch (error) {
+      console.error('Error loading members:', error);
+      return [];
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
   const validateAndSetToken = async (
     newToken: string, 
     orgId: string,
@@ -167,14 +287,12 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
-      // Fetch pipes and members after successful connection
+      // Fetch pipes and members with cache
       try {
-        const [pipesData, membersData] = await Promise.all([
-          fetchPipes(newToken, orgId),
-          fetchOrganizationMembers(newToken, orgId)
+        await Promise.all([
+          loadPipesWithCache(newToken, orgId),
+          loadMembersWithCache(newToken, orgId)
         ]);
-        setPipes(pipesData);
-        setMembers(membersData);
       } catch (error) {
         console.error('Error fetching organization data:', error);
       }
@@ -207,27 +325,15 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authUser?.id]);
 
-  const refreshPipes = useCallback(async () => {
+  const refreshPipes = useCallback(async (forceRefresh = true) => {
     if (!token || !organizationId) return;
-    
-    try {
-      const pipesData = await fetchPipes(token, organizationId);
-      setPipes(pipesData);
-    } catch (error) {
-      console.error('Error refreshing pipes:', error);
-    }
-  }, [token, organizationId]);
+    await loadPipesWithCache(token, organizationId, forceRefresh);
+  }, [token, organizationId, authUser?.id]);
 
-  const refreshMembers = useCallback(async () => {
+  const refreshMembers = useCallback(async (forceRefresh = true) => {
     if (!token || !organizationId) return;
-    
-    try {
-      const membersData = await fetchOrganizationMembers(token, organizationId);
-      setMembers(membersData);
-    } catch (error) {
-      console.error('Error refreshing members:', error);
-    }
-  }, [token, organizationId]);
+    await loadMembersWithCache(token, organizationId, forceRefresh);
+  }, [token, organizationId, authUser?.id]);
 
   const addHistoryRecord = useCallback(async (record: Omit<TransferRecord, 'id' | 'timestamp'>) => {
     if (!authUser?.id) return;
@@ -311,6 +417,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         history,
         historyLoading,
+        pipesLoading,
+        membersLoading,
         setToken: validateAndSetToken,
         clearToken,
         refreshPipes,
