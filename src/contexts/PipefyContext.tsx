@@ -85,15 +85,19 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, authUser?.id]);
 
+  // Email do admin que contém a configuração global do Pipefy
+  const ADMIN_EMAIL = 'guilherme@apollos.com.br';
+
   const loadPipefyConfig = async () => {
     if (!authUser?.id) return;
     
     setIsLoading(true);
     try {
-      const { data: profile, error } = await supabase
+      // Buscar o token global do perfil do admin
+      const { data: adminProfile, error } = await supabase
         .from('profiles')
         .select('pipefy_token, pipefy_org_id')
-        .eq('id', authUser.id)
+        .eq('email', ADMIN_EMAIL)
         .maybeSingle();
       
       if (error) {
@@ -102,8 +106,8 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (profile?.pipefy_token && profile?.pipefy_org_id) {
-        await validateAndSetToken(profile.pipefy_token, profile.pipefy_org_id, false);
+      if (adminProfile?.pipefy_token && adminProfile?.pipefy_org_id) {
+        await validateAndSetToken(adminProfile.pipefy_token, adminProfile.pipefy_org_id, false);
       } else {
         setIsConnected(false);
         setIsLoading(false);
@@ -431,17 +435,15 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       setUser(result.user);
       setIsConnected(true);
       
-      // Save to Supabase profile using upsert to handle new users
-      if (saveToProfile && authUser?.id) {
+      // Save to admin profile (global config)
+      if (saveToProfile) {
         const { error } = await supabase
           .from('profiles')
-          .upsert({
-            id: authUser.id,
+          .update({
             pipefy_token: newToken,
             pipefy_org_id: orgId,
-          }, {
-            onConflict: 'id'
-          });
+          })
+          .eq('email', ADMIN_EMAIL);
         
         if (error) {
           console.error('Error saving Pipefy config:', error);
@@ -474,18 +476,14 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     setMembers([]);
     setIsConnected(false);
     
-    // Clear from Supabase profile using upsert
-    if (authUser?.id) {
-      await supabase
-        .from('profiles')
-        .upsert({
-          id: authUser.id,
-          pipefy_token: null,
-          pipefy_org_id: null,
-        }, {
-          onConflict: 'id'
-        });
-    }
+    // Clear from admin profile (global config)
+    await supabase
+      .from('profiles')
+      .update({
+        pipefy_token: null,
+        pipefy_org_id: null,
+      })
+      .eq('email', ADMIN_EMAIL);
   }, [authUser?.id]);
 
   const refreshPipes = useCallback(async (forceRefresh = true): Promise<RefreshResult> => {
