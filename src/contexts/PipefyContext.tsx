@@ -85,33 +85,27 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, authUser?.id]);
 
-  // Email do admin que contém a configuração global do Pipefy
-  const ADMIN_EMAIL = 'guilherme@apollos.com.br';
-
+  // Carrega configuração global do Pipefy a partir da tabela pipefy_settings
   const loadPipefyConfig = async () => {
     if (!authUser?.id) return;
     
     setIsLoading(true);
     try {
-      // Primeiro, buscar o ID do admin pelo email na tabela auth (via profiles que tem relação)
-      // Como profiles pode não ter email, vamos buscar primeiro o user_id do admin
-      const { data: adminUser, error: adminError } = await supabase
-        .from('profiles')
-        .select('id, pipefy_token, pipefy_org_id')
-        .limit(100);
+      const { data: settings, error } = await supabase
+        .from('pipefy_settings')
+        .select('pipefy_token, pipefy_org_id')
+        .eq('id', 1)
+        .maybeSingle();
       
-      if (adminError) {
-        console.error('Error fetching profiles:', adminError);
+      if (error) {
+        console.error('Error loading Pipefy config:', error);
         setIsLoading(false);
         setIsConnected(false);
         return;
       }
 
-      // Buscar na lista o perfil que tem token configurado (o admin)
-      const adminProfile = adminUser?.find(p => p.pipefy_token && p.pipefy_org_id);
-
-      if (adminProfile?.pipefy_token && adminProfile?.pipefy_org_id) {
-        await validateAndSetToken(adminProfile.pipefy_token, adminProfile.pipefy_org_id, false);
+      if (settings?.pipefy_token && settings?.pipefy_org_id) {
+        await validateAndSetToken(settings.pipefy_token, settings.pipefy_org_id, false);
       } else {
         setIsConnected(false);
         setIsLoading(false);
@@ -440,18 +434,21 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       setUser(result.user);
       setIsConnected(true);
       
-      // Save to admin profile (global config)
+      // Save to pipefy_settings (global config)
       if (saveToProfile) {
         const { error } = await supabase
-          .from('profiles')
-          .update({
+          .from('pipefy_settings')
+          .upsert({
+            id: 1,
             pipefy_token: newToken,
             pipefy_org_id: orgId,
-          })
-          .eq('email', ADMIN_EMAIL);
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
         
         if (error) {
           console.error('Error saving Pipefy config:', error);
+          setIsLoading(false);
+          return { success: false, error: 'Falha ao salvar configuração no banco. Verifique suas permissões.' };
         }
       }
       
@@ -481,14 +478,15 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     setMembers([]);
     setIsConnected(false);
     
-    // Clear from admin profile (global config)
+    // Clear from pipefy_settings (global config)
     await supabase
-      .from('profiles')
+      .from('pipefy_settings')
       .update({
         pipefy_token: null,
         pipefy_org_id: null,
+        updated_at: new Date().toISOString(),
       })
-      .eq('email', ADMIN_EMAIL);
+      .eq('id', 1);
   }, [authUser?.id]);
 
   const refreshPipes = useCallback(async (forceRefresh = true): Promise<RefreshResult> => {

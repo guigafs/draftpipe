@@ -172,11 +172,11 @@ export function ConfigScreen() {
             </a>
           </div>
 
-          <Alert className="bg-warning/10 border-warning/30">
-            <AlertCircle className="h-4 w-4 text-warning" />
-            <AlertDescription className="text-sm text-warning">
-              <strong>Importante:</strong> O token será salvo apenas no seu navegador (localStorage). 
-              Você precisará de permissões de Admin ou Super Admin para transferir cards.
+          <Alert className="bg-muted/50 border-border">
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+            <AlertDescription className="text-sm text-muted-foreground">
+              <strong>Nota:</strong> Esta configuração é global e será usada por todos os usuários do sistema.
+              Apenas administradores podem alterar estas configurações.
             </AlertDescription>
           </Alert>
         </CardContent>
