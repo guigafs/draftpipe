@@ -55,16 +55,30 @@ export function SearchSection({
 
   const handleRefreshPipes = async () => {
     setIsRefreshing(true);
-    await refreshPipes();
+    const result = await refreshPipes();
     setIsRefreshing(false);
-    toast.success('Lista de pipes atualizada!');
+    
+    if (result.cacheSaved) {
+      toast.success('Lista de pipes atualizada e salva no cache!');
+    } else if (result.ok) {
+      toast.warning(`Pipes atualizados, mas não foi possível salvar no cache: ${result.cacheError || 'Erro desconhecido'}`);
+    } else {
+      toast.error(`Erro ao atualizar pipes: ${result.cacheError || 'Erro desconhecido'}`);
+    }
   };
 
   const handleRefreshMembers = async () => {
     setIsRefreshingMembers(true);
-    await refreshMembers();
+    const result = await refreshMembers();
     setIsRefreshingMembers(false);
-    toast.success('Lista de usuários atualizada!');
+    
+    if (result.cacheSaved) {
+      toast.success('Lista de usuários atualizada e salva no cache!');
+    } else if (result.ok) {
+      toast.warning(`Usuários atualizados, mas não foi possível salvar no cache: ${result.cacheError || 'Erro desconhecido'}`);
+    } else {
+      toast.error(`Erro ao atualizar usuários: ${result.cacheError || 'Erro desconhecido'}`);
+    }
   };
 
   const handleCancel = () => {
