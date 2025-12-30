@@ -15,13 +15,13 @@ interface HeaderProps {
 }
 
 export function Header({ onSettingsClick, onHelpClick }: HeaderProps) {
-  const { isConnected, user, clearToken } = usePipefy();
-  const { logout } = useAuth();
+  const { isConnected, user: pipefyUser, clearToken } = usePipefy();
+  const { logout, user: authUser } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     clearToken();
-    logout();
+    await logout();
     navigate('/login');
   };
 
@@ -53,7 +53,7 @@ export function Header({ onSettingsClick, onHelpClick }: HeaderProps) {
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              {isConnected ? `Logado como ${user?.email}` : 'Configure seu token para conectar'}
+              {isConnected ? `Pipefy: ${pipefyUser?.email}` : 'Configure seu token para conectar'}
             </TooltipContent>
           </Tooltip>
         </div>
