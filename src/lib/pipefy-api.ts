@@ -26,6 +26,7 @@ export interface PipefyPhaseWithDone {
 }
 
 export interface PipefyCardField {
+  field_id: string;
   name: string;
   value: string | null;
 }
@@ -252,6 +253,7 @@ async function fetchAllCardsFromPhase(
                 }
                 created_at
                 fields {
+                  field { id }
                   name
                   value
                 }
@@ -275,7 +277,25 @@ async function fetchAllCardsFromPhase(
       };
     }>(token, query, { phaseId, after: cursor });
 
-    const cards = data.phase.cards.edges.map(edge => edge.node);
+    interface RawField { field?: { id: string }; name: string; value: string | null }
+    interface RawNode { id: string; title: string; current_phase: PipefyPhase; assignees: PipefyUser[]; created_at?: string; fields?: RawField[] }
+    
+    const cards = data.phase.cards.edges.map(edge => {
+      const node = edge.node as unknown as RawNode;
+      const card: PipefyCard = {
+        id: node.id,
+        title: node.title,
+        current_phase: node.current_phase,
+        assignees: node.assignees,
+        created_at: node.created_at,
+        fields: node.fields?.map((f) => ({
+          field_id: f.field?.id || '',
+          name: f.name,
+          value: f.value,
+        })),
+      };
+      return card;
+    });
     allCards.push(...cards);
 
     hasNextPage = data.phase.cards.pageInfo.hasNextPage;
@@ -504,12 +524,21 @@ export interface InviteOptions {
   roleName?: string;
 }
 
+// Interface for field updates
+interface CardFieldUpdate {
+  cardId: string;
+  fieldId: string;
+}
+
 // Batch update multiple cards in a single GraphQL request using aliases
 // Optionally includes inviteMembers mutation to add user to pipe first
+// Also updates "Responsável" fields if fieldUpdates are provided
 async function batchUpdateCards(
   token: string,
   cardIds: string[],
   newAssigneeId: string,
+  newAssigneeName: string,
+  fieldUpdates: CardFieldUpdate[],
   inviteOptions?: InviteOptions
 ): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[]; userInvited?: boolean }> {
   const results = {
@@ -528,8 +557,12 @@ async function batchUpdateCards(
     }
   ` : '';
 
-  // Build dynamic mutation with aliases for card updates
-  const cardMutations = cardIds.map((cardId, index) => `
+  // Build dynamic mutation with aliases for card updates AND field updates
+  const cardMutations = cardIds.map((cardId, index) => {
+    const fieldUpdate = fieldUpdates.find(f => f.cardId === cardId);
+    
+    // Mutation for updating assignees
+    let mutations = `
     card_${index}: updateCard(input: {id: "${cardId}", assignee_ids: ["${newAssigneeId}"]}) {
       card {
         id
@@ -539,8 +572,20 @@ async function batchUpdateCards(
           email
         }
       }
+    }`;
+    
+    // If there's a "Responsável" field, add mutation to update it
+    if (fieldUpdate) {
+      // Escape the name for GraphQL string
+      const escapedName = newAssigneeName.replace(/"/g, '\\"');
+      mutations += `
+    field_${index}: updateCardField(input: {card_id: "${cardId}", field_id: "${fieldUpdate.fieldId}", new_value: "${escapedName}"}) {
+      success
+    }`;
     }
-  `).join('\n');
+    
+    return mutations;
+  }).join('\n');
 
   const mutation = `mutation { 
     ${inviteMutation}
@@ -628,10 +673,13 @@ export type BatchTransferProgressCallback = (
 
 // Batch transfer cards with optimized mutations (up to 50 per request)
 // Optionally invites user to pipe in the first batch if inviteOptions is provided
+// Also updates "Responsável" fields automatically
 export async function transferCards(
   token: string,
   cardIds: string[],
   newAssigneeId: string,
+  newAssigneeName: string,
+  cards: PipefyCard[],
   batchSize: number = 50,
   onProgress?: BatchTransferProgressCallback,
   inviteOptions?: InviteOptions
@@ -641,6 +689,25 @@ export async function transferCards(
     failed: [] as { cardId: string; error: string }[],
     userInvited: false,
   };
+
+  // Find "Responsável" fields for each card (field name contains "responsável")
+  const fieldUpdates: CardFieldUpdate[] = [];
+  for (const cardId of cardIds) {
+    const card = cards.find(c => c.id === cardId);
+    if (card?.fields) {
+      const responsavelField = card.fields.find(f => 
+        f.name.toLowerCase().includes('responsável') && f.field_id
+      );
+      if (responsavelField?.field_id) {
+        fieldUpdates.push({
+          cardId,
+          fieldId: responsavelField.field_id,
+        });
+      }
+    }
+  }
+
+  console.log(`[Pipefy] Campos "Responsável" encontrados: ${fieldUpdates.length} de ${cardIds.length} cards`);
 
   // Split cards into batches
   const batches = chunkArray(cardIds, batchSize);
@@ -652,7 +719,10 @@ export async function transferCards(
     // Only include invite in the first batch
     const batchInviteOptions = i === 0 ? inviteOptions : undefined;
     
-    const batchResult = await batchUpdateCards(token, batch, newAssigneeId, batchInviteOptions);
+    // Get field updates for this batch
+    const batchFieldUpdates = fieldUpdates.filter(f => batch.includes(f.cardId));
+    
+    const batchResult = await batchUpdateCards(token, batch, newAssigneeId, newAssigneeName, batchFieldUpdates, batchInviteOptions);
     
     // Track if user was invited
     if (batchResult.userInvited) {

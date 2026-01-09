@@ -116,6 +116,8 @@ export default function Responsaveis() {
       token,
       cardIds,
       selectedToUser.user.id,
+      selectedToUser.user.name,
+      selectedCards,
       batchSize,
       (completed, total, batchResults) => {
         setCompletedBatches(completed);
