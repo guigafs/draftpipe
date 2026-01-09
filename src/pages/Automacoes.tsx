@@ -212,6 +212,7 @@ export default function Automacoes() {
       await supabase.from('automation_logs').insert({
         automation_id: selectedAutomation.id,
         executed_by: user.id,
+        executed_by_email: user.email,
         status: response.ok ? 'success' : 'error',
         response_status: response.status,
         response_body: responseBody.substring(0, 5000), // Limit size
@@ -247,6 +248,7 @@ export default function Automacoes() {
       await supabase.from('automation_logs').insert({
         automation_id: selectedAutomation.id,
         executed_by: user.id,
+        executed_by_email: user.email,
         status: 'error',
         response_body: error.message || 'Erro desconhecido',
         execution_time: executionTime,

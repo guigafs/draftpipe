@@ -67,6 +67,7 @@ export function AutomationHistorySection() {
           id,
           automation_id,
           executed_by,
+          executed_by_email,
           status,
           response_status,
           response_body,
@@ -79,16 +80,12 @@ export function AutomationHistorySection() {
 
       if (error) throw error;
 
-      // Get user emails for executed_by
-      const userIds = [...new Set((data || []).map(log => log.executed_by))];
-      const { data: usersData } = await supabase.auth.admin.listUsers?.() || { data: null };
-      
       const formattedLogs: AutomationLogWithDetails[] = (data || []).map(log => ({
         id: log.id,
         automation_id: log.automation_id,
         automation_name: (log.automations as any)?.name || 'Automação removida',
         executed_by: log.executed_by,
-        executed_by_email: log.executed_by === user?.id ? (user?.email || 'Você') : 'Usuário',
+        executed_by_email: log.executed_by_email || 'Usuário desconhecido',
         status: log.status as 'success' | 'error',
         response_status: log.response_status,
         response_body: log.response_body,
