@@ -112,10 +112,15 @@ export default function Responsaveis() {
       roleName: 'member'
     } : undefined;
 
+    // If searching for "No Assignee", pass empty string so we don't try to remove anyone
+    const sourceUserId = selectedFromUser?.user.id === '__NO_ASSIGNEE__' 
+      ? '' 
+      : (selectedFromUser?.user.id || '');
+
     const result = await transferCards(
       token,
       cardIds,
-      selectedFromUser?.user.id || '',
+      sourceUserId,
       selectedToUser.user.id,
       selectedToUser.user.name,
       selectedCards,

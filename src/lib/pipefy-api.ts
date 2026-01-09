@@ -309,7 +309,7 @@ async function fetchAllCardsFromPhase(
 export async function searchCardsByAssignee(
   token: string,
   pipeId: string,
-  email: string,
+  email: string | null,
   cachedPhases?: PipefyPhaseWithDone[],
   onProgress?: SearchProgressCallback,
   signal?: AbortSignal
@@ -369,17 +369,23 @@ export async function searchCardsByAssignee(
   // Final progress update
   onProgress?.(totalPhases, totalPhases, 'Filtrando resultados...', allCards.length);
 
-  // Filter locally by assignee email
-  return allCards.filter(card =>
-    card.assignees.some(a => a.email.toLowerCase() === email.toLowerCase())
-  );
+  // Filter locally by assignee email or no assignee
+  if (email === null) {
+    // Return cards without any assignee
+    return allCards.filter(card => card.assignees.length === 0);
+  } else {
+    // Return cards with specific assignee
+    return allCards.filter(card =>
+      card.assignees.some(a => a.email.toLowerCase() === email.toLowerCase())
+    );
+  }
 }
 
 // Search cards in all pipes
 export async function searchCardsInAllPipes(
   token: string,
   pipes: PipefyPipe[],
-  email: string,
+  email: string | null,
   onProgress?: AllPipesProgressCallback,
   signal?: AbortSignal
 ): Promise<PipefyCard[]> {

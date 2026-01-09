@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { usePipefy } from '@/contexts/PipefyContext';
 import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember, PipefyPipe } from '@/lib/pipefy-api';
 import { toast } from 'sonner';
-import { UserSearch } from './UserSearch';
+import { UserSearch, NO_ASSIGNEE_MEMBER } from './UserSearch';
 import { SearchConfirmModal } from './SearchConfirmModal';
 import { CacheIndicator } from './CacheIndicator';
 import { PipeMultiSelect } from './PipeMultiSelect';
@@ -106,12 +106,16 @@ export function SearchSection({
         ? pipes
         : pipes.filter(p => selectedPipeIds.includes(p.id));
 
+      // Check if searching for cards without assignee
+      const isSearchingNoAssignee = selectedFromUser.user.id === '__NO_ASSIGNEE__';
+      const searchEmail = isSearchingNoAssignee ? null : selectedFromUser.user.email;
+
       if (selectedPipes.length > 1) {
         // Search in multiple pipes
         cards = await searchCardsInAllPipes(
           token,
           selectedPipes,
-          selectedFromUser.user.email,
+          searchEmail,
           (currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound });
           },
@@ -127,7 +131,7 @@ export function SearchSection({
         cards = await searchCardsByAssignee(
           token, 
           selectedPipe.id, 
-          selectedFromUser.user.email,
+          searchEmail,
           selectedPipe?.phases, // Pass cached phases to avoid extra API request
           (currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
@@ -157,11 +161,13 @@ export function SearchSection({
     }
   };
 
+  const isSearchingNoAssignee = selectedFromUser?.user.id === '__NO_ASSIGNEE__';
+  
   const canSearch = isConnected && selectedPipeIds.length > 0 && selectedFromUser && selectedToUser && 
-    selectedFromUser.user.id !== selectedToUser.user.id;
+    (selectedFromUser.user.id !== selectedToUser.user.id || isSearchingNoAssignee);
 
   const sameUserError = selectedFromUser && selectedToUser && 
-    selectedFromUser.user.id === selectedToUser.user.id
+    selectedFromUser.user.id === selectedToUser.user.id && !isSearchingNoAssignee
     ? 'Os responsáveis devem ser diferentes'
     : undefined;
 
@@ -221,6 +227,7 @@ export function SearchSection({
           selectedUser={selectedFromUser}
           onUserSelect={onFromUserChange}
           excludeUserId={selectedToUser?.user.id}
+          allowNoAssignee
         />
 
         {/* Pipe Selection */}
@@ -303,7 +310,7 @@ export function SearchSection({
       <SearchConfirmModal
         open={showSearchConfirm}
         onOpenChange={setShowSearchConfirm}
-        fromEmail={selectedFromUser?.user.email || ''}
+        fromEmail={isSearchingNoAssignee ? 'Sem Responsável' : (selectedFromUser?.user.email || '')}
         selectedPipeIds={selectedPipeIds}
         pipes={pipes}
         onConfirm={handleConfirmSearch}
