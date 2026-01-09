@@ -25,6 +25,11 @@ export interface PipefyPhaseWithDone {
   done: boolean;
 }
 
+export interface PipefyCardField {
+  name: string;
+  value: string | null;
+}
+
 export interface PipefyCard {
   id: string;
   title: string;
@@ -32,6 +37,7 @@ export interface PipefyCard {
   assignees: PipefyUser[];
   created_at?: string;
   pipeName?: string;
+  fields?: PipefyCardField[];
 }
 
 export interface PipefyPipe {
@@ -245,6 +251,10 @@ async function fetchAllCardsFromPhase(
                   email
                 }
                 created_at
+                fields {
+                  name
+                  value
+                }
               }
             }
             pageInfo {
