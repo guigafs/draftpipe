@@ -21,6 +21,26 @@ interface CardFiltersProps {
   onFiltersChange: (filters: CardFiltersState) => void;
 }
 
+// Parse field value removing brackets and quotes
+export function parseFieldValue(value: string | null): string {
+  if (!value) return '';
+  
+  // Try to parse as JSON array
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.join(', ');
+    }
+    return String(parsed);
+  } catch {
+    // If not JSON, return as-is but clean up common patterns
+    return value
+      .replace(/^\[["']?/, '')
+      .replace(/["']?\]$/, '')
+      .trim();
+  }
+}
+
 export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProps) {
   const { clientes, disciplinas } = useMemo(() => {
     const clienteSet = new Set<string>();
@@ -29,10 +49,11 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
     cards.forEach((card) => {
       card.fields?.forEach((field) => {
         const fieldName = field.name.toLowerCase();
-        if (fieldName === 'cliente' && field.value) {
-          clienteSet.add(field.value);
-        } else if (fieldName === 'disciplina' && field.value) {
-          disciplinaSet.add(field.value);
+        const cleanValue = parseFieldValue(field.value);
+        if (fieldName === 'cliente' && cleanValue) {
+          clienteSet.add(cleanValue);
+        } else if (fieldName === 'disciplina' && cleanValue) {
+          disciplinaSet.add(cleanValue);
         }
       });
     });

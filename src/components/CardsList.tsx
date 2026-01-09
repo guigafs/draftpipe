@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PipefyCard } from '@/lib/pipefy-api';
 import { cn } from '@/lib/utils';
-import { CardFilters, CardFiltersState } from './CardFilters';
+import { CardFilters, CardFiltersState, parseFieldValue } from './CardFilters';
 
 interface CardsListProps {
   cards: PipefyCard[];
@@ -35,7 +35,7 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
     if (cardFilters.cliente) {
       result = result.filter((card) =>
         card.fields?.some(
-          (f) => f.name.toLowerCase() === 'cliente' && f.value === cardFilters.cliente
+          (f) => f.name.toLowerCase() === 'cliente' && parseFieldValue(f.value) === cardFilters.cliente
         )
       );
     }
@@ -44,7 +44,7 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
     if (cardFilters.disciplina) {
       result = result.filter((card) =>
         card.fields?.some(
-          (f) => f.name.toLowerCase() === 'disciplina' && f.value === cardFilters.disciplina
+          (f) => f.name.toLowerCase() === 'disciplina' && parseFieldValue(f.value) === cardFilters.disciplina
         )
       );
     }
@@ -252,15 +252,19 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
                         .filter((f) =>
                           ['cliente', 'disciplina'].includes(f.name.toLowerCase()) && f.value
                         )
-                        .map((field) => (
-                          <Badge
-                            key={field.name}
-                            variant="outline"
-                            className="text-xs"
-                          >
-                            {field.name}: {field.value}
-                          </Badge>
-                        ))}
+                        .map((field) => {
+                          const cleanValue = parseFieldValue(field.value);
+                          if (!cleanValue) return null;
+                          return (
+                            <Badge
+                              key={field.name}
+                              variant="outline"
+                              className="text-xs"
+                            >
+                              {field.name}: {cleanValue}
+                            </Badge>
+                          );
+                        })}
                     </div>
                   )}
 
