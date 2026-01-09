@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, CheckSquare, Square, RotateCcw, X, User, FolderKanban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PipefyCard } from '@/lib/pipefy-api';
 import { cn } from '@/lib/utils';
+import { CardFilters, CardFiltersState } from './CardFilters';
 
 interface CardsListProps {
   cards: PipefyCard[];
@@ -17,17 +18,49 @@ interface CardsListProps {
 
 export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: CardsListProps) {
   const [searchFilter, setSearchFilter] = useState('');
+  const [cardFilters, setCardFilters] = useState<CardFiltersState>({
+    cliente: null,
+    disciplina: null,
+  });
+
+  // Reset filters when cards change (new search)
+  useEffect(() => {
+    setCardFilters({ cliente: null, disciplina: null });
+  }, [cards]);
 
   const filteredCards = useMemo(() => {
-    if (!searchFilter.trim()) return cards;
-    
-    const term = searchFilter.toLowerCase();
-    return cards.filter(
-      (card) =>
-        card.title.toLowerCase().includes(term) ||
-        card.id.includes(term)
-    );
-  }, [cards, searchFilter]);
+    let result = cards;
+
+    // Filter by Cliente
+    if (cardFilters.cliente) {
+      result = result.filter((card) =>
+        card.fields?.some(
+          (f) => f.name.toLowerCase() === 'cliente' && f.value === cardFilters.cliente
+        )
+      );
+    }
+
+    // Filter by Disciplina
+    if (cardFilters.disciplina) {
+      result = result.filter((card) =>
+        card.fields?.some(
+          (f) => f.name.toLowerCase() === 'disciplina' && f.value === cardFilters.disciplina
+        )
+      );
+    }
+
+    // Filter by search text
+    if (searchFilter.trim()) {
+      const term = searchFilter.toLowerCase();
+      result = result.filter(
+        (card) =>
+          card.title.toLowerCase().includes(term) ||
+          card.id.includes(term)
+      );
+    }
+
+    return result;
+  }, [cards, cardFilters, searchFilter]);
 
   const handleSelectAll = () => {
     if (selectedIds.size === filteredCards.length) {
@@ -102,6 +135,13 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
 
   return (
     <div className="space-y-4">
+      {/* Filters */}
+      <CardFilters
+        cards={cards}
+        filters={cardFilters}
+        onFiltersChange={setCardFilters}
+      />
+
       {/* Toolbar */}
       <Card className="shadow-soft">
         <CardContent className="p-4">
@@ -204,6 +244,25 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
                       </Badge>
                     </div>
                   </div>
+
+                  {/* Cliente and Disciplina badges */}
+                  {card.fields && card.fields.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {card.fields
+                        .filter((f) =>
+                          ['cliente', 'disciplina'].includes(f.name.toLowerCase()) && f.value
+                        )
+                        .map((field) => (
+                          <Badge
+                            key={field.name}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {field.name}: {field.value}
+                          </Badge>
+                        ))}
+                    </div>
+                  )}
 
                   {card.assignees && card.assignees.length > 0 && (
                     <div className="flex items-center gap-2 mt-3">
