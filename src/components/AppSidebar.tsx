@@ -1,4 +1,4 @@
-import { Users, Zap, History } from 'lucide-react';
+import { Users, Zap, History, LayoutDashboard } from 'lucide-react';
 import { useLocation, Link } from 'react-router-dom';
 import {
   Sidebar,
@@ -15,6 +15,11 @@ import {
 import logo from '@/assets/logo.png';
 
 const menuItems = [
+  {
+    title: 'Dashboard',
+    url: '/dashboard',
+    icon: LayoutDashboard,
+  },
   {
     title: 'Responsáveis',
     url: '/responsaveis',
