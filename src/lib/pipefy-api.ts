@@ -718,10 +718,31 @@ export async function transferCards(
       // Remove duplicates
       const uniqueIds = [...new Set(updatedIds)];
       
-      // Find "Responsável" field if exists
-      const responsavelField = card.fields?.find(f => 
-        f.name.toLowerCase().includes('responsável') && f.field_id
-      );
+      // Normalize text: remove accents and convert to lowercase
+      const normalizeText = (text: string): string => {
+        return text
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, ''); // Remove diacritics
+      };
+
+      // Find "Responsável" field - handle variations like "Planejamento Responsável:", "Responsável pela fase:"
+      const responsavelField = card.fields?.find(f => {
+        const normalizedName = normalizeText(f.name);
+        // Check if field name contains "responsavel" (normalized, without accent)
+        const isResponsavelField = normalizedName.includes('responsavel');
+        // Only require field_id to exist and be non-empty
+        const hasValidId = f.field_id && f.field_id.trim() !== '';
+        return isResponsavelField && hasValidId;
+      });
+
+      // Debug logging
+      if (responsavelField) {
+        console.log(`[Pipefy] Campo "Responsável" encontrado no card ${cardId}: "${responsavelField.name}" (field_id: ${responsavelField.field_id})`);
+      } else {
+        const fieldNames = card.fields?.map(f => `${f.name} (id: ${f.field_id || 'vazio'})`).join(', ') || 'nenhum';
+        console.log(`[Pipefy] Campo "Responsável" NÃO encontrado no card ${cardId}. Campos disponíveis: ${fieldNames}`);
+      }
       
       fieldUpdates.push({
         cardId,
@@ -731,7 +752,11 @@ export async function transferCards(
     }
   }
 
-  console.log(`[Pipefy] Campos "Responsável" encontrados: ${fieldUpdates.length} de ${cardIds.length} cards`);
+  const cardsWithField = fieldUpdates.filter(f => f.fieldId).length;
+  console.log(`[Pipefy] Campos "Responsável" encontrados: ${cardsWithField} de ${cardIds.length} cards`);
+  if (cardsWithField < cardIds.length) {
+    console.log(`[Pipefy] ⚠️ ${cardIds.length - cardsWithField} cards não possuem campo "Responsável" identificado`);
+  }
 
   // Split cards into batches
   const batches = chunkArray(cardIds, batchSize);
