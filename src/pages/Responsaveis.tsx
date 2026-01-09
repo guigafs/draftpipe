@@ -115,6 +115,7 @@ export default function Responsaveis() {
     const result = await transferCards(
       token,
       cardIds,
+      selectedFromUser?.user.id || '',
       selectedToUser.user.id,
       selectedToUser.user.name,
       selectedCards,

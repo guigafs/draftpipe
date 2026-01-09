@@ -527,7 +527,8 @@ export interface InviteOptions {
 // Interface for field updates
 interface CardFieldUpdate {
   cardId: string;
-  fieldId: string;
+  fieldId?: string;
+  updatedAssigneeIds: string[];
 }
 
 // Batch update multiple cards in a single GraphQL request using aliases
@@ -536,7 +537,6 @@ interface CardFieldUpdate {
 async function batchUpdateCards(
   token: string,
   cardIds: string[],
-  newAssigneeId: string,
   newAssigneeName: string,
   fieldUpdates: CardFieldUpdate[],
   inviteOptions?: InviteOptions
@@ -561,9 +561,13 @@ async function batchUpdateCards(
   const cardMutations = cardIds.map((cardId, index) => {
     const fieldUpdate = fieldUpdates.find(f => f.cardId === cardId);
     
+    // Get updated assignee IDs for this card
+    const assigneeIds = fieldUpdate?.updatedAssigneeIds || [];
+    const assigneeIdsStr = assigneeIds.map(id => `"${id}"`).join(', ');
+    
     // Mutation for updating assignees
     let mutations = `
-    card_${index}: updateCard(input: {id: "${cardId}", assignee_ids: ["${newAssigneeId}"]}) {
+    card_${index}: updateCard(input: {id: "${cardId}", assignee_ids: [${assigneeIdsStr}]}) {
       card {
         id
         title
@@ -575,7 +579,7 @@ async function batchUpdateCards(
     }`;
     
     // If there's a "Responsável" field, add mutation to update it
-    if (fieldUpdate) {
+    if (fieldUpdate?.fieldId) {
       // Escape the name for GraphQL string
       const escapedName = newAssigneeName.replace(/"/g, '\\"');
       mutations += `
@@ -623,16 +627,20 @@ async function batchUpdateCards(
         const card = data.data[key].card;
         const assignees = card.assignees || [];
         
-        // Validate if new assignee is in the list
-        const assigneeFound = assignees.some(
-          (a: { id: string }) => a.id === newAssigneeId
+        // Get expected assignee IDs from fieldUpdates
+        const fieldUpdate = fieldUpdates.find(f => f.cardId === cardId);
+        const expectedIds = fieldUpdate?.updatedAssigneeIds || [];
+        
+        // Validate if all expected assignees are in the list
+        const allAssigneesFound = expectedIds.every(expectedId =>
+          assignees.some((a: { id: string }) => a.id === expectedId)
         );
         
-        if (assigneeFound) {
+        if (allAssigneesFound) {
           console.log(`[Pipefy] Card ${cardId}: Transferência confirmada`);
           results.succeeded.push(cardId);
         } else {
-          console.warn(`[Pipefy] Card ${cardId}: Assignee não encontrado na resposta`, assignees);
+          console.warn(`[Pipefy] Card ${cardId}: Assignees não encontrados na resposta`, assignees);
           results.failed.push({
             cardId,
             error: 'Responsável não foi atribuído corretamente'
@@ -677,6 +685,7 @@ export type BatchTransferProgressCallback = (
 export async function transferCards(
   token: string,
   cardIds: string[],
+  sourceUserId: string,
   newAssigneeId: string,
   newAssigneeName: string,
   cards: PipefyCard[],
@@ -690,20 +699,29 @@ export async function transferCards(
     userInvited: false,
   };
 
-  // Find "Responsável" fields for each card (field name contains "responsável")
+  // Build field updates with updated assignee IDs (preserving other assignees)
   const fieldUpdates: CardFieldUpdate[] = [];
   for (const cardId of cardIds) {
     const card = cards.find(c => c.id === cardId);
-    if (card?.fields) {
-      const responsavelField = card.fields.find(f => 
+    if (card) {
+      // Get current assignee IDs, remove source user, add new assignee
+      const currentIds = card.assignees.map(a => a.id);
+      const updatedIds = currentIds
+        .filter(id => id !== sourceUserId)
+        .concat(newAssigneeId);
+      // Remove duplicates
+      const uniqueIds = [...new Set(updatedIds)];
+      
+      // Find "Responsável" field if exists
+      const responsavelField = card.fields?.find(f => 
         f.name.toLowerCase().includes('responsável') && f.field_id
       );
-      if (responsavelField?.field_id) {
-        fieldUpdates.push({
-          cardId,
-          fieldId: responsavelField.field_id,
-        });
-      }
+      
+      fieldUpdates.push({
+        cardId,
+        fieldId: responsavelField?.field_id,
+        updatedAssigneeIds: uniqueIds,
+      });
     }
   }
 
@@ -722,7 +740,7 @@ export async function transferCards(
     // Get field updates for this batch
     const batchFieldUpdates = fieldUpdates.filter(f => batch.includes(f.cardId));
     
-    const batchResult = await batchUpdateCards(token, batch, newAssigneeId, newAssigneeName, batchFieldUpdates, batchInviteOptions);
+    const batchResult = await batchUpdateCards(token, batch, newAssigneeName, batchFieldUpdates, batchInviteOptions);
     
     // Track if user was invited
     if (batchResult.userInvited) {
