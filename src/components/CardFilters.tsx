@@ -1,18 +1,15 @@
-import { useMemo } from 'react';
-import { Filter, X } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Filter, X, ChevronDown, Check, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import { PipefyCard } from '@/lib/pipefy-api';
 
 export interface CardFiltersState {
-  cliente: string | null;
-  disciplina: string | null;
+  clientes: string[];
+  disciplinas: string[];
 }
 
 interface CardFiltersProps {
@@ -41,6 +38,177 @@ export function parseFieldValue(value: string | null): string {
   }
 }
 
+interface MultiSelectDropdownProps {
+  label: string;
+  options: string[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
+}
+
+function MultiSelectDropdown({ label, options, selectedValues, onChange }: MultiSelectDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filteredOptions = useMemo(() => 
+    options.filter(opt => opt.toLowerCase().includes(searchTerm.toLowerCase())),
+    [options, searchTerm]
+  );
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleToggle = (value: string) => {
+    if (selectedValues.includes(value)) {
+      onChange(selectedValues.filter(v => v !== value));
+    } else {
+      onChange([...selectedValues, value]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedValues.length === options.length) {
+      onChange([]);
+    } else {
+      onChange([...options]);
+    }
+  };
+
+  const handleRemove = (value: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange(selectedValues.filter(v => v !== value));
+  };
+
+  const handleClearAll = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange([]);
+  };
+
+  const allSelected = selectedValues.length === options.length && options.length > 0;
+  const someSelected = selectedValues.length > 0 && selectedValues.length < options.length;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Button
+        type="button"
+        variant="outline"
+        role="combobox"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "w-[200px] justify-between h-auto min-h-9 px-3 py-1.5",
+          selectedValues.length === 0 && "text-muted-foreground"
+        )}
+      >
+        <div className="flex flex-wrap gap-1 flex-1 text-left">
+          {selectedValues.length === 0 ? (
+            <span className="text-sm">{label}</span>
+          ) : selectedValues.length <= 2 ? (
+            selectedValues.map((value) => (
+              <Badge key={value} variant="secondary" className="text-xs">
+                {value}
+                <X
+                  className="ml-1 h-3 w-3 cursor-pointer hover:text-destructive"
+                  onClick={(e) => handleRemove(value, e)}
+                />
+              </Badge>
+            ))
+          ) : (
+            <Badge variant="secondary" className="text-xs">
+              {selectedValues.length} selecionados
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1 ml-2">
+          {selectedValues.length > 0 && (
+            <X
+              className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={handleClearAll}
+            />
+          )}
+          <ChevronDown className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform",
+            isOpen && "rotate-180"
+          )} />
+        </div>
+      </Button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-[250px] mt-1 bg-popover border border-border rounded-md shadow-lg">
+          {/* Search */}
+          {options.length > 5 && (
+            <div className="p-2 border-b border-border">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 h-8"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Select All */}
+          <div className="p-2 border-b border-border">
+            <div
+              className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent cursor-pointer"
+              onClick={handleSelectAll}
+            >
+              <Checkbox
+                checked={allSelected}
+                className={cn(someSelected && "data-[state=unchecked]:bg-primary/50")}
+              />
+              <span className="font-medium text-sm">
+                Selecionar todos ({options.length})
+              </span>
+            </div>
+          </div>
+
+          {/* Options List */}
+          <div className="max-h-48 overflow-y-auto p-2">
+            {filteredOptions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhum encontrado
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {filteredOptions.map((option) => {
+                  const isSelected = selectedValues.includes(option);
+                  return (
+                    <div
+                      key={option}
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
+                        isSelected ? "bg-accent" : "hover:bg-accent/50"
+                      )}
+                      onClick={() => handleToggle(option)}
+                    >
+                      <Checkbox checked={isSelected} />
+                      <span className="text-sm truncate flex-1">{option}</span>
+                      {isSelected && (
+                        <Check className="h-4 w-4 text-primary shrink-0" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProps) {
   const { clientes, disciplinas } = useMemo(() => {
     const clienteSet = new Set<string>();
@@ -64,7 +232,7 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
     };
   }, [cards]);
 
-  const hasFilters = filters.cliente || filters.disciplina;
+  const hasFilters = filters.clientes.length > 0 || filters.disciplinas.length > 0;
   const hasOptions = clientes.length > 0 || disciplinas.length > 0;
 
   if (!hasOptions) {
@@ -72,7 +240,7 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
   }
 
   const handleClearFilters = () => {
-    onFiltersChange({ cliente: null, disciplina: null });
+    onFiltersChange({ clientes: [], disciplinas: [] });
   };
 
   return (
@@ -80,43 +248,21 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
       <Filter className="h-4 w-4 text-muted-foreground" />
 
       {clientes.length > 0 && (
-        <Select
-          value={filters.cliente || ''}
-          onValueChange={(value) =>
-            onFiltersChange({ ...filters, cliente: value || null })
-          }
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Cliente" />
-          </SelectTrigger>
-          <SelectContent>
-            {clientes.map((cliente) => (
-              <SelectItem key={cliente} value={cliente}>
-                {cliente}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelectDropdown
+          label="Cliente"
+          options={clientes}
+          selectedValues={filters.clientes}
+          onChange={(values) => onFiltersChange({ ...filters, clientes: values })}
+        />
       )}
 
       {disciplinas.length > 0 && (
-        <Select
-          value={filters.disciplina || ''}
-          onValueChange={(value) =>
-            onFiltersChange({ ...filters, disciplina: value || null })
-          }
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Disciplina" />
-          </SelectTrigger>
-          <SelectContent>
-            {disciplinas.map((disciplina) => (
-              <SelectItem key={disciplina} value={disciplina}>
-                {disciplina}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelectDropdown
+          label="Disciplina"
+          options={disciplinas}
+          selectedValues={filters.disciplinas}
+          onChange={(values) => onFiltersChange({ ...filters, disciplinas: values })}
+        />
       )}
 
       {hasFilters && (

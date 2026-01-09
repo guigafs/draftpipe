@@ -19,32 +19,32 @@ interface CardsListProps {
 export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: CardsListProps) {
   const [searchFilter, setSearchFilter] = useState('');
   const [cardFilters, setCardFilters] = useState<CardFiltersState>({
-    cliente: null,
-    disciplina: null,
+    clientes: [],
+    disciplinas: [],
   });
 
   // Reset filters when cards change (new search)
   useEffect(() => {
-    setCardFilters({ cliente: null, disciplina: null });
+    setCardFilters({ clientes: [], disciplinas: [] });
   }, [cards]);
 
   const filteredCards = useMemo(() => {
     let result = cards;
 
-    // Filter by Cliente
-    if (cardFilters.cliente) {
+    // Filter by Cliente (multi-select)
+    if (cardFilters.clientes.length > 0) {
       result = result.filter((card) =>
         card.fields?.some(
-          (f) => f.name.toLowerCase() === 'cliente' && parseFieldValue(f.value) === cardFilters.cliente
+          (f) => f.name.toLowerCase() === 'cliente' && cardFilters.clientes.includes(parseFieldValue(f.value))
         )
       );
     }
 
-    // Filter by Disciplina
-    if (cardFilters.disciplina) {
+    // Filter by Disciplina (multi-select)
+    if (cardFilters.disciplinas.length > 0) {
       result = result.filter((card) =>
         card.fields?.some(
-          (f) => f.name.toLowerCase() === 'disciplina' && parseFieldValue(f.value) === cardFilters.disciplina
+          (f) => f.name.toLowerCase() === 'disciplina' && cardFilters.disciplinas.includes(parseFieldValue(f.value))
         )
       );
     }
