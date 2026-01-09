@@ -305,11 +305,35 @@ async function fetchAllCardsFromPhase(
   return allCards;
 }
 
-// Search cards by assignee email (fetching through phases with full pagination)
-export async function searchCardsByAssignee(
+// Normalize text: remove accents and convert to lowercase
+const normalizeText = (text: string): string => {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // Remove diacritics
+};
+
+// Parse responsible field value (can be JSON array or single value)
+function parseResponsibleFieldValue(value: string | null): string[] {
+  if (!value || value.trim() === '') return [];
+  
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.map(v => String(v));
+    }
+    return [String(parsed)];
+  } catch {
+    // If not valid JSON, treat as single value
+    return [value.trim()];
+  }
+}
+
+// Search cards by "Responsável" field value (userId)
+export async function searchCardsByResponsibleField(
   token: string,
   pipeId: string,
-  email: string | null,
+  userId: string | null,
   cachedPhases?: PipefyPhaseWithDone[],
   onProgress?: SearchProgressCallback,
   signal?: AbortSignal
@@ -369,23 +393,36 @@ export async function searchCardsByAssignee(
   // Final progress update
   onProgress?.(totalPhases, totalPhases, 'Filtrando resultados...', allCards.length);
 
-  // Filter locally by assignee email or no assignee
-  if (email === null) {
-    // Return cards without any assignee
-    return allCards.filter(card => card.assignees.length === 0);
-  } else {
-    // Return cards with specific assignee
-    return allCards.filter(card =>
-      card.assignees.some(a => a.email.toLowerCase() === email.toLowerCase())
-    );
-  }
+  // Filter by "Responsável" field value
+  const filteredCards = allCards.filter(card => {
+    // Find any field that contains "responsavel" in the name
+    const responsavelField = card.fields?.find(f => {
+      const normalizedName = normalizeText(f.name);
+      return normalizedName.includes('responsavel');
+    });
+    
+    if (!responsavelField) return false;
+    
+    // Parse the field value as array of user IDs
+    const fieldUserIds = parseResponsibleFieldValue(responsavelField.value);
+    
+    // userId null = search for cards with empty responsible field
+    if (userId === null) {
+      return fieldUserIds.length === 0;
+    }
+    
+    // Check if the array contains the userId
+    return fieldUserIds.includes(userId);
+  });
+
+  return filteredCards;
 }
 
-// Search cards in all pipes
+// Search cards in all pipes by "Responsável" field
 export async function searchCardsInAllPipes(
   token: string,
   pipes: PipefyPipe[],
-  email: string | null,
+  userId: string | null,
   onProgress?: AllPipesProgressCallback,
   signal?: AbortSignal
 ): Promise<PipefyCard[]> {
@@ -398,10 +435,10 @@ export async function searchCardsInAllPipes(
     
     const pipe = pipes[pipeIndex];
 
-    const pipeCards = await searchCardsByAssignee(
+    const pipeCards = await searchCardsByResponsibleField(
       token,
       pipe.id,
-      email,
+      userId,
       pipe.phases, // Pass cached phases to avoid extra API request
       (currentPhase, totalPhases, phaseName, cardsFound) => {
         onProgress?.(
@@ -534,16 +571,13 @@ export interface InviteOptions {
 interface CardFieldUpdate {
   cardId: string;
   fieldId?: string;
-  updatedAssigneeIds: string[];
+  newFieldValue?: string[]; // Array of user IDs
 }
 
-// Batch update multiple cards in a single GraphQL request using aliases
-// Optionally includes inviteMembers mutation to add user to pipe first
-// Also updates "Responsável" fields if fieldUpdates are provided
+// Batch update "Responsável" fields in a single GraphQL request using aliases
+// Only updates the field, does NOT modify card assignees
 async function batchUpdateCards(
   token: string,
-  cardIds: string[],
-  newAssigneeName: string,
   fieldUpdates: CardFieldUpdate[],
   inviteOptions?: InviteOptions
 ): Promise<{ succeeded: string[]; failed: { cardId: string; error: string }[]; userInvited?: boolean }> {
@@ -552,6 +586,20 @@ async function batchUpdateCards(
     failed: [] as { cardId: string; error: string }[],
     userInvited: false,
   };
+
+  // Filter only updates that have a valid fieldId and value
+  const validUpdates = fieldUpdates.filter(f => f.fieldId && f.newFieldValue);
+  
+  if (validUpdates.length === 0) {
+    // No valid field updates, mark all as failed
+    for (const update of fieldUpdates) {
+      results.failed.push({
+        cardId: update.cardId,
+        error: 'Campo "Responsável" não encontrado'
+      });
+    }
+    return results;
+  }
 
   // Build invite mutation if options provided
   const inviteMutation = inviteOptions ? `
@@ -563,38 +611,19 @@ async function batchUpdateCards(
     }
   ` : '';
 
-  // Build dynamic mutation with aliases for card updates AND field updates
-  const cardMutations = cardIds.map((cardId, index) => {
-    const fieldUpdate = fieldUpdates.find(f => f.cardId === cardId);
+  // Build dynamic mutation with aliases for field updates ONLY (no card assignee updates)
+  const cardMutations = validUpdates.map((update, index) => {
+    // Format value as JSON array of IDs for Pipefy connection field
+    const valueStr = JSON.stringify(update.newFieldValue);
     
-    // Get updated assignee IDs for this card
-    const assigneeIds = fieldUpdate?.updatedAssigneeIds || [];
-    const assigneeIdsStr = assigneeIds.map(id => `"${id}"`).join(', ');
-    
-    // Mutation for updating assignees
-    let mutations = `
-    card_${index}: updateCard(input: {id: "${cardId}", assignee_ids: [${assigneeIdsStr}]}) {
+    return `
+    field_${index}: updateCardField(input: {card_id: "${update.cardId}", field_id: "${update.fieldId}", new_value: ${valueStr}}) {
+      success
       card {
         id
         title
-        assignees {
-          id
-          email
-        }
       }
     }`;
-    
-    // If there's a "Responsável" field, add mutation to update it
-    if (fieldUpdate?.fieldId) {
-      // Escape the name for GraphQL string
-      const escapedName = newAssigneeName.replace(/"/g, '\\"');
-      mutations += `
-    field_${index}: updateCardField(input: {card_id: "${cardId}", field_id: "${fieldUpdate.fieldId}", new_value: "${escapedName}"}) {
-      success
-    }`;
-    }
-    
-    return mutations;
   }).join('\n');
 
   const mutation = `mutation { 
@@ -603,6 +632,7 @@ async function batchUpdateCards(
   }`;
 
   console.log('[Pipefy] Executando mutation:', inviteOptions ? 'com convite ao pipe' : 'sem convite');
+  console.log('[Pipefy] Atualizando apenas campos "Responsável", assignees não serão alterados');
 
   try {
     const response = await fetch(PIPEFY_API_URL, {
@@ -624,52 +654,44 @@ async function batchUpdateCards(
       console.log('[Pipefy] Usuário adicionado ao pipe com sucesso');
     }
 
-    // Process each card result
-    for (let i = 0; i < cardIds.length; i++) {
-      const key = `card_${i}`;
-      const cardId = cardIds[i];
+    // Process each field update result
+    for (let i = 0; i < validUpdates.length; i++) {
+      const key = `field_${i}`;
+      const cardId = validUpdates[i].cardId;
 
-      if (data.data?.[key]?.card) {
-        const card = data.data[key].card;
-        const assignees = card.assignees || [];
-        
-        // Get expected assignee IDs from fieldUpdates
-        const fieldUpdate = fieldUpdates.find(f => f.cardId === cardId);
-        const expectedIds = fieldUpdate?.updatedAssigneeIds || [];
-        
-        // Validate if all expected assignees are in the list
-        const allAssigneesFound = expectedIds.every(expectedId =>
-          assignees.some((a: { id: string }) => a.id === expectedId)
-        );
-        
-        if (allAssigneesFound) {
-          console.log(`[Pipefy] Card ${cardId}: Transferência confirmada`);
-          results.succeeded.push(cardId);
-        } else {
-          console.warn(`[Pipefy] Card ${cardId}: Assignees não encontrados na resposta`, assignees);
-          results.failed.push({
-            cardId,
-            error: 'Responsável não foi atribuído corretamente'
-          });
-        }
+      if (data.data?.[key]?.success) {
+        console.log(`[Pipefy] Card ${cardId}: Campo "Responsável" atualizado com sucesso`);
+        results.succeeded.push(cardId);
       } else {
         // Check for specific error in errors array
         const cardError = data.errors?.find((e: { path?: string[]; message: string }) => 
           e.path?.includes(key)
         );
-        console.error(`[Pipefy] Card ${cardId}: Erro na API`, cardError);
+        console.error(`[Pipefy] Card ${cardId}: Erro ao atualizar campo`, cardError);
         results.failed.push({
           cardId,
-          error: cardError?.message || 'Erro ao atualizar card'
+          error: cardError?.message || 'Erro ao atualizar campo "Responsável"'
         });
+      }
+    }
+    
+    // Mark cards without valid field as failed
+    for (const update of fieldUpdates) {
+      if (!update.fieldId || !update.newFieldValue) {
+        if (!results.succeeded.includes(update.cardId) && !results.failed.some(f => f.cardId === update.cardId)) {
+          results.failed.push({
+            cardId: update.cardId,
+            error: 'Campo "Responsável" não encontrado'
+          });
+        }
       }
     }
   } catch (error) {
     console.error('[Pipefy] Erro na requisição:', error);
     // If the entire request fails, mark all cards as failed
-    for (const cardId of cardIds) {
+    for (const update of fieldUpdates) {
       results.failed.push({
-        cardId,
+        cardId: update.cardId,
         error: error instanceof Error ? error.message : 'Erro de conexão'
       });
     }
@@ -685,15 +707,14 @@ export type BatchTransferProgressCallback = (
   batchResults: { succeeded: string[]; failed: { cardId: string; error: string }[]; userInvited?: boolean }
 ) => void;
 
-// Batch transfer cards with optimized mutations (up to 50 per request)
-// Optionally invites user to pipe in the first batch if inviteOptions is provided
-// Also updates "Responsável" fields automatically
+// Batch transfer cards - updates ONLY the "Responsável" field, does NOT modify card assignees
+// Preserves other user IDs in the field when multiple responsibles exist
 export async function transferCards(
   token: string,
   cardIds: string[],
   sourceUserId: string,
-  newAssigneeId: string,
-  newAssigneeName: string,
+  newResponsibleId: string,
+  _newResponsibleName: string, // Kept for compatibility but not used
   cards: PipefyCard[],
   batchSize: number = 50,
   onProgress?: BatchTransferProgressCallback,
@@ -705,27 +726,11 @@ export async function transferCards(
     userInvited: false,
   };
 
-  // Build field updates with updated assignee IDs (preserving other assignees)
+  // Build field updates with updated user IDs (preserving other responsibles)
   const fieldUpdates: CardFieldUpdate[] = [];
   for (const cardId of cardIds) {
     const card = cards.find(c => c.id === cardId);
     if (card) {
-      // Get current assignee IDs, remove source user, add new assignee
-      const currentIds = card.assignees.map(a => a.id);
-      const updatedIds = currentIds
-        .filter(id => id !== sourceUserId)
-        .concat(newAssigneeId);
-      // Remove duplicates
-      const uniqueIds = [...new Set(updatedIds)];
-      
-      // Normalize text: remove accents and convert to lowercase
-      const normalizeText = (text: string): string => {
-        return text
-          .toLowerCase()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, ''); // Remove diacritics
-      };
-
       // Find "Responsável" field - handle variations like "Planejamento Responsável:", "Responsável pela fase:"
       const responsavelField = card.fields?.find(f => {
         const normalizedName = normalizeText(f.name);
@@ -738,17 +743,39 @@ export async function transferCards(
 
       // Debug logging
       if (responsavelField) {
-        console.log(`[Pipefy] Campo "Responsável" encontrado no card ${cardId}: "${responsavelField.name}" (field_id: ${responsavelField.field_id})`);
+        console.log(`[Pipefy] Campo "Responsável" encontrado no card ${cardId}: "${responsavelField.name}" (field_id: ${responsavelField.field_id}, valor: ${responsavelField.value})`);
       } else {
         const fieldNames = card.fields?.map(f => `${f.name} (id: ${f.field_id || 'vazio'})`).join(', ') || 'nenhum';
         console.log(`[Pipefy] Campo "Responsável" NÃO encontrado no card ${cardId}. Campos disponíveis: ${fieldNames}`);
       }
       
-      fieldUpdates.push({
-        cardId,
-        fieldId: responsavelField?.field_id,
-        updatedAssigneeIds: uniqueIds,
-      });
+      if (responsavelField) {
+        // Parse current user IDs from the field value
+        const currentIds = parseResponsibleFieldValue(responsavelField.value);
+        
+        // Remove source user, add new responsible, preserve others
+        const updatedIds = currentIds
+          .filter(id => id !== sourceUserId)
+          .concat(newResponsibleId);
+        
+        // Remove duplicates
+        const uniqueIds = [...new Set(updatedIds)];
+        
+        console.log(`[Pipefy] Card ${cardId}: IDs anteriores: [${currentIds.join(', ')}] -> Novos IDs: [${uniqueIds.join(', ')}]`);
+        
+        fieldUpdates.push({
+          cardId,
+          fieldId: responsavelField.field_id,
+          newFieldValue: uniqueIds,
+        });
+      } else {
+        // No responsible field found
+        fieldUpdates.push({
+          cardId,
+          fieldId: undefined,
+          newFieldValue: undefined,
+        });
+      }
     }
   }
 
@@ -758,20 +785,17 @@ export async function transferCards(
     console.log(`[Pipefy] ⚠️ ${cardIds.length - cardsWithField} cards não possuem campo "Responsável" identificado`);
   }
 
-  // Split cards into batches
-  const batches = chunkArray(cardIds, batchSize);
+  // Split field updates into batches
+  const batches = chunkArray(fieldUpdates, batchSize);
   const totalBatches = batches.length;
 
   for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
+    const batchFieldUpdates = batches[i];
     
     // Only include invite in the first batch
     const batchInviteOptions = i === 0 ? inviteOptions : undefined;
     
-    // Get field updates for this batch
-    const batchFieldUpdates = fieldUpdates.filter(f => batch.includes(f.cardId));
-    
-    const batchResult = await batchUpdateCards(token, batch, newAssigneeName, batchFieldUpdates, batchInviteOptions);
+    const batchResult = await batchUpdateCards(token, batchFieldUpdates, batchInviteOptions);
     
     // Track if user was invited
     if (batchResult.userInvited) {

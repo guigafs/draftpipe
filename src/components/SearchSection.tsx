@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { searchCardsByAssignee, searchCardsInAllPipes, PipefyCard, PipefyMember, PipefyPipe } from '@/lib/pipefy-api';
+import { searchCardsByResponsibleField, searchCardsInAllPipes, PipefyCard, PipefyMember, PipefyPipe } from '@/lib/pipefy-api';
 import { toast } from 'sonner';
 import { UserSearch, NO_ASSIGNEE_MEMBER } from './UserSearch';
 import { SearchConfirmModal } from './SearchConfirmModal';
@@ -106,16 +106,17 @@ export function SearchSection({
         ? pipes
         : pipes.filter(p => selectedPipeIds.includes(p.id));
 
-      // Check if searching for cards without assignee
-      const isSearchingNoAssignee = selectedFromUser.user.id === '__NO_ASSIGNEE__';
-      const searchEmail = isSearchingNoAssignee ? null : selectedFromUser.user.email;
+      // Check if searching for cards without responsible (empty field)
+      const isSearchingNoResponsible = selectedFromUser.user.id === '__NO_ASSIGNEE__';
+      // Use user ID (not email) for searching by responsible field value
+      const searchUserId = isSearchingNoResponsible ? null : selectedFromUser.user.id;
 
       if (selectedPipes.length > 1) {
-        // Search in multiple pipes
+        // Search in multiple pipes by responsible field
         cards = await searchCardsInAllPipes(
           token,
           selectedPipes,
-          searchEmail,
+          searchUserId,
           (currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound });
           },
@@ -126,12 +127,12 @@ export function SearchSection({
           : `${selectedPipes.length} pipes selecionados`;
         onCardsFound(cards, resultPipeName, selectedPipeIds);
       } else {
-        // Search in single pipe - pass cached phases
+        // Search in single pipe by responsible field
         const selectedPipe = selectedPipes[0];
-        cards = await searchCardsByAssignee(
+        cards = await searchCardsByResponsibleField(
           token, 
           selectedPipe.id, 
-          searchEmail,
+          searchUserId,
           selectedPipe?.phases, // Pass cached phases to avoid extra API request
           (currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });
@@ -161,15 +162,10 @@ export function SearchSection({
     }
   };
 
-  const isSearchingNoAssignee = selectedFromUser?.user.id === '__NO_ASSIGNEE__';
+  const isSearchingNoResponsible = selectedFromUser?.user.id === '__NO_ASSIGNEE__';
   
-  const canSearch = isConnected && selectedPipeIds.length > 0 && selectedFromUser && selectedToUser && 
-    (selectedFromUser.user.id !== selectedToUser.user.id || isSearchingNoAssignee);
-
-  const sameUserError = selectedFromUser && selectedToUser && 
-    selectedFromUser.user.id === selectedToUser.user.id && !isSearchingNoAssignee
-    ? 'Os responsáveis devem ser diferentes'
-    : undefined;
+  // Allow same user (useful for fixing field values)
+  const canSearch = isConnected && selectedPipeIds.length > 0 && selectedFromUser && selectedToUser;
 
   const progressPercentage = searchProgress 
     ? (searchProgress.currentPhase / searchProgress.totalPhases) * 100 
@@ -226,7 +222,6 @@ export function SearchSection({
           placeholder="Digite nome ou email do responsável atual..."
           selectedUser={selectedFromUser}
           onUserSelect={onFromUserChange}
-          excludeUserId={selectedToUser?.user.id}
           allowNoAssignee
         />
 
@@ -247,8 +242,6 @@ export function SearchSection({
           placeholder="Digite nome ou email do novo responsável..."
           selectedUser={selectedToUser}
           onUserSelect={onToUserChange}
-          excludeUserId={selectedFromUser?.user.id}
-          error={sameUserError}
         />
 
         {/* Search Progress */}
@@ -310,7 +303,7 @@ export function SearchSection({
       <SearchConfirmModal
         open={showSearchConfirm}
         onOpenChange={setShowSearchConfirm}
-        fromEmail={isSearchingNoAssignee ? 'Sem Responsável' : (selectedFromUser?.user.email || '')}
+        fromEmail={isSearchingNoResponsible ? 'Sem Responsável' : (selectedFromUser?.user.email || '')}
         selectedPipeIds={selectedPipeIds}
         pipes={pipes}
         onConfirm={handleConfirmSearch}
