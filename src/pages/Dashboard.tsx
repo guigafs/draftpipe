@@ -6,7 +6,7 @@ import { DashboardFilters, PeriodType, getDateRangeForPeriod } from '@/component
 import { DashboardKPICards } from '@/components/dashboard/DashboardKPICards';
 import { DashboardChart, ChartDataPoint } from '@/components/dashboard/DashboardChart';
 import { DashboardLogTable, LogEntry } from '@/components/dashboard/DashboardLogTable';
-import { format, eachDayOfInterval, differenceInDays } from 'date-fns';
+import { format, eachDayOfInterval, differenceInDays, parseISO } from 'date-fns';
 
 interface TransferRecord {
   id: string;
@@ -144,12 +144,15 @@ export default function Dashboard() {
     return days.map((day) => {
       const dayStr = format(day, 'yyyy-MM-dd');
 
-      const dayTransfers = transfers.filter((t) =>
-        t.created_at.startsWith(dayStr)
-      );
-      const dayAutomations = automationLogs.filter((log) =>
-        log.created_at.startsWith(dayStr)
-      );
+      // Use parseISO to correctly handle the date string and format to local date
+      const dayTransfers = transfers.filter((t) => {
+        const transferDate = format(parseISO(t.created_at), 'yyyy-MM-dd');
+        return transferDate === dayStr;
+      });
+      const dayAutomations = automationLogs.filter((log) => {
+        const logDate = format(parseISO(log.created_at), 'yyyy-MM-dd');
+        return logDate === dayStr;
+      });
 
       const responsaveis = dayTransfers.reduce(
         (sum, t) => sum + (t.succeeded_count + t.failed_count) * 2,

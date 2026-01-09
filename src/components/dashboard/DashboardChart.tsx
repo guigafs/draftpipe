@@ -12,7 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export interface ChartDataPoint {
@@ -36,7 +36,8 @@ export function DashboardChart({ data, isLoading }: DashboardChartProps) {
 
   const formatXAxis = (dateStr: string) => {
     try {
-      const date = new Date(dateStr);
+      // Use parseISO to correctly handle the date string without timezone shift
+      const date = parseISO(dateStr);
       return format(date, 'dd/MM', { locale: ptBR });
     } catch {
       return dateStr;
@@ -45,7 +46,8 @@ export function DashboardChart({ data, isLoading }: DashboardChartProps) {
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      const date = new Date(label);
+      // Use parseISO to correctly handle the date string without timezone shift
+      const date = parseISO(label);
       return (
         <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
           <p className="font-medium mb-2">
