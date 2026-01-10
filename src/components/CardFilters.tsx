@@ -10,6 +10,7 @@ import { PipefyCard } from '@/lib/pipefy-api';
 export interface CardFiltersState {
   clientes: string[];
   disciplinas: string[];
+  fases: string[];
 }
 
 interface CardFiltersProps {
@@ -210,11 +211,18 @@ function MultiSelectDropdown({ label, options, selectedValues, onChange }: Multi
 }
 
 export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProps) {
-  const { clientes, disciplinas } = useMemo(() => {
+  const { clientes, disciplinas, fases } = useMemo(() => {
     const clienteSet = new Set<string>();
     const disciplinaSet = new Set<string>();
+    const faseSet = new Set<string>();
 
     cards.forEach((card) => {
+      // Extract phase name
+      const phaseName = card.current_phase?.name;
+      if (phaseName) {
+        faseSet.add(phaseName);
+      }
+
       card.fields?.forEach((field) => {
         const fieldName = field.name.toLowerCase();
         const cleanValue = parseFieldValue(field.value);
@@ -229,18 +237,19 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
     return {
       clientes: [...clienteSet].sort(),
       disciplinas: [...disciplinaSet].sort(),
+      fases: [...faseSet].sort(),
     };
   }, [cards]);
 
-  const hasFilters = filters.clientes.length > 0 || filters.disciplinas.length > 0;
-  const hasOptions = clientes.length > 0 || disciplinas.length > 0;
+  const hasFilters = filters.clientes.length > 0 || filters.disciplinas.length > 0 || filters.fases.length > 0;
+  const hasOptions = clientes.length > 0 || disciplinas.length > 0 || fases.length > 0;
 
   if (!hasOptions) {
     return null;
   }
 
   const handleClearFilters = () => {
-    onFiltersChange({ clientes: [], disciplinas: [] });
+    onFiltersChange({ clientes: [], disciplinas: [], fases: [] });
   };
 
   return (
@@ -253,6 +262,15 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
           options={clientes}
           selectedValues={filters.clientes}
           onChange={(values) => onFiltersChange({ ...filters, clientes: values })}
+        />
+      )}
+
+      {fases.length > 0 && (
+        <MultiSelectDropdown
+          label="Fase"
+          options={fases}
+          selectedValues={filters.fases}
+          onChange={(values) => onFiltersChange({ ...filters, fases: values })}
         />
       )}
 
