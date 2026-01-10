@@ -404,15 +404,21 @@ export async function searchCardsByResponsibleField(
       return normalizedName.includes('responsavel');
     });
     
+    // userId null = search for cards with empty responsible field
+    if (userId === null) {
+      // Card sem o campo "Responsável" = sem responsável
+      if (!responsavelField) return true;
+      
+      // Card com campo vazio = sem responsável
+      const fieldValues = parseResponsibleFieldValue(responsavelField.value);
+      return fieldValues.length === 0;
+    }
+    
+    // Para busca por usuário específico, o campo deve existir
     if (!responsavelField) return false;
     
     // Parse the field value as array of user IDs or names
     const fieldValues = parseResponsibleFieldValue(responsavelField.value);
-    
-    // userId null = search for cards with empty responsible field
-    if (userId === null) {
-      return fieldValues.length === 0;
-    }
     
     // Check if any value matches the userId OR userName
     return fieldValues.some(value => {
