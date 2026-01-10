@@ -9,7 +9,7 @@ import { ProgressModal } from '@/components/ProgressModal';
 import { HelpModal } from '@/components/HelpModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { PipefyCard, PipefyMember, transferCards, InviteOptions } from '@/lib/pipefy-api';
+import { PipefyCard, PipefyMember, PipefyPipe, transferCards, InviteOptions } from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 
@@ -21,7 +21,7 @@ interface ProgressItem {
 }
 
 export default function Responsaveis() {
-  const { isConnected, isLoading, token, addHistoryRecord } = usePipefy();
+  const { isConnected, isLoading, token, pipes, addHistoryRecord } = usePipefy();
 
   // UI State
   const [helpOpen, setHelpOpen] = useState(false);
@@ -120,6 +120,9 @@ export default function Responsaveis() {
       ? ''
       : (selectedFromUser?.user.name || '');
 
+    // Get the selected pipes for field_id fallback
+    const selectedPipes = pipes.filter(p => pipeIds.includes(p.id));
+
     const result = await transferCards(
       token,
       cardIds,
@@ -128,6 +131,7 @@ export default function Responsaveis() {
       selectedToUser.user.id,
       selectedToUser.user.name,
       selectedCards,
+      selectedPipes,
       batchSize,
       (completed, total, batchResults) => {
         setCompletedBatches(completed);

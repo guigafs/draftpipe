@@ -41,10 +41,16 @@ export interface PipefyCard {
   fields?: PipefyCardField[];
 }
 
+export interface PipefyPipeField {
+  id: string;
+  label: string;
+}
+
 export interface PipefyPipe {
   id: string;
   name: string;
   phases?: PipefyPhaseWithDone[];
+  start_form_fields?: PipefyPipeField[];
 }
 
 export interface PipefyOrganization {
@@ -179,7 +185,7 @@ export async function fetchOrganizationMembers(
   return data.organization.members || [];
 }
 
-// Fetch organization pipes with phases (cached for search optimization)
+// Fetch organization pipes with phases and form fields (cached for search optimization)
 export async function fetchPipes(token: string, organizationId: string): Promise<PipefyPipe[]> {
   const query = `
     query($orgId: ID!) {
@@ -191,6 +197,10 @@ export async function fetchPipes(token: string, organizationId: string): Promise
             id
             name
             done
+          }
+          start_form_fields {
+            id
+            label
           }
         }
       }
@@ -327,6 +337,26 @@ export function parseResponsibleFieldValue(value: string | null): string[] {
     // If not valid JSON, treat as single value
     return [value.trim()];
   }
+}
+
+// Find the "Responsável" field ID from a pipe's form definition
+// This is used as fallback when a card's field doesn't have a valid field_id
+function findResponsibleFieldIdFromPipes(pipes: PipefyPipe[]): string | null {
+  for (const pipe of pipes) {
+    if (!pipe.start_form_fields) continue;
+    
+    const field = pipe.start_form_fields.find(f => {
+      const normalizedLabel = normalizeText(f.label);
+      return normalizedLabel.includes('responsavel');
+    });
+    
+    if (field?.id) {
+      console.log(`[Pipefy] field_id encontrado no pipe "${pipe.name}": ${field.id} (label: "${field.label}")`);
+      return field.id;
+    }
+  }
+  
+  return null;
 }
 
 // Search cards by "Responsável" field value (userId or userName)
@@ -742,6 +772,7 @@ export async function transferCards(
   newResponsibleId: string,
   _newResponsibleName: string, // Kept for compatibility but not used
   cards: PipefyCard[],
+  pipes: PipefyPipe[], // Used to get field_id fallback from pipe definition
   batchSize: number = 50,
   onProgress?: BatchTransferProgressCallback,
   inviteOptions?: InviteOptions
@@ -755,30 +786,45 @@ export async function transferCards(
   // Normalize source user name for comparison
   const normalizedSourceName = normalizeText(sourceUserName);
 
+  // Get fallback field_id from pipe definition (for cards with empty field_id)
+  const fallbackFieldId = findResponsibleFieldIdFromPipes(pipes);
+
   // Build field updates with updated user IDs (preserving other responsibles)
   const fieldUpdates: CardFieldUpdate[] = [];
   for (const cardId of cardIds) {
     const card = cards.find(c => c.id === cardId);
     if (card) {
-      // Find "Responsável" field - handle variations like "Planejamento Responsável:", "Responsável pela fase:"
-      const responsavelField = card.fields?.find(f => {
+      // First: Find "Responsável" field by name only (don't require valid field_id)
+      let responsavelField = card.fields?.find(f => {
         const normalizedName = normalizeText(f.name);
-        // Check if field name contains "responsavel" (normalized, without accent)
-        const isResponsavelField = normalizedName.includes('responsavel');
-        // Only require field_id to exist and be non-empty
-        const hasValidId = f.field_id && f.field_id.trim() !== '';
-        return isResponsavelField && hasValidId;
+        return normalizedName.includes('responsavel');
       });
 
+      // If field found but has empty field_id, use fallback from pipe
+      if (responsavelField && (!responsavelField.field_id || responsavelField.field_id.trim() === '')) {
+        if (fallbackFieldId) {
+          console.log(`[Pipefy] Card ${cardId}: field_id vazio, usando fallback do pipe: ${fallbackFieldId}`);
+          responsavelField = {
+            ...responsavelField,
+            field_id: fallbackFieldId
+          };
+        }
+      }
+
+      // Now check if we have a valid field_id
+      const hasValidFieldId = responsavelField && responsavelField.field_id && responsavelField.field_id.trim() !== '';
+
       // Debug logging
-      if (responsavelField) {
-        console.log(`[Pipefy] Campo "Responsável" encontrado no card ${cardId}: "${responsavelField.name}" (field_id: ${responsavelField.field_id}, valor: ${responsavelField.value})`);
+      if (hasValidFieldId) {
+        console.log(`[Pipefy] Campo "Responsável" encontrado no card ${cardId}: "${responsavelField!.name}" (field_id: ${responsavelField!.field_id}, valor: ${responsavelField!.value})`);
+      } else if (responsavelField) {
+        console.log(`[Pipefy] Campo "Responsável" encontrado mas sem field_id válido no card ${cardId}: "${responsavelField.name}"`);
       } else {
         const fieldNames = card.fields?.map(f => `${f.name} (id: ${f.field_id || 'vazio'})`).join(', ') || 'nenhum';
         console.log(`[Pipefy] Campo "Responsável" NÃO encontrado no card ${cardId}. Campos disponíveis: ${fieldNames}`);
       }
       
-      if (responsavelField) {
+      if (hasValidFieldId && responsavelField) {
         // Parse current values from the field (can be IDs or names)
         const currentValues = parseResponsibleFieldValue(responsavelField.value);
         
@@ -812,7 +858,7 @@ export async function transferCards(
           newFieldValue: uniqueIds,
         });
       } else {
-        // No responsible field found
+        // No responsible field found or no valid field_id
         fieldUpdates.push({
           cardId,
           fieldId: undefined,
