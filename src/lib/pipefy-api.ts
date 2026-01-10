@@ -314,7 +314,7 @@ const normalizeText = (text: string): string => {
 };
 
 // Parse responsible field value (can be JSON array or single value)
-function parseResponsibleFieldValue(value: string | null): string[] {
+export function parseResponsibleFieldValue(value: string | null): string[] {
   if (!value || value.trim() === '') return [];
   
   try {
