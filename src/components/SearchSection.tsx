@@ -108,8 +108,9 @@ export function SearchSection({
 
       // Check if searching for cards without responsible (empty field)
       const isSearchingNoResponsible = selectedFromUser.user.id === '__NO_ASSIGNEE__';
-      // Use user ID (not email) for searching by responsible field value
+      // Use user ID and name for searching by responsible field value
       const searchUserId = isSearchingNoResponsible ? null : selectedFromUser.user.id;
+      const searchUserName = isSearchingNoResponsible ? null : selectedFromUser.user.name;
 
       if (selectedPipes.length > 1) {
         // Search in multiple pipes by responsible field
@@ -117,6 +118,7 @@ export function SearchSection({
           token,
           selectedPipes,
           searchUserId,
+          searchUserName,
           (currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPipe, totalPipes, pipeName, currentPhase, totalPhases, phaseName, cardsFound });
           },
@@ -133,6 +135,7 @@ export function SearchSection({
           token, 
           selectedPipe.id, 
           searchUserId,
+          searchUserName,
           selectedPipe?.phases, // Pass cached phases to avoid extra API request
           (currentPhase, totalPhases, phaseName, cardsFound) => {
             setSearchProgress({ currentPhase, totalPhases, phaseName, cardsFound });

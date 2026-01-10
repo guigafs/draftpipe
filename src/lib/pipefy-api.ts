@@ -329,11 +329,12 @@ function parseResponsibleFieldValue(value: string | null): string[] {
   }
 }
 
-// Search cards by "Responsável" field value (userId)
+// Search cards by "Responsável" field value (userId or userName)
 export async function searchCardsByResponsibleField(
   token: string,
   pipeId: string,
   userId: string | null,
+  userName: string | null,
   cachedPhases?: PipefyPhaseWithDone[],
   onProgress?: SearchProgressCallback,
   signal?: AbortSignal
@@ -393,7 +394,9 @@ export async function searchCardsByResponsibleField(
   // Final progress update
   onProgress?.(totalPhases, totalPhases, 'Filtrando resultados...', allCards.length);
 
-  // Filter by "Responsável" field value
+  // Filter by "Responsável" field value (ID or name)
+  const normalizedUserName = userName ? normalizeText(userName) : null;
+  
   const filteredCards = allCards.filter(card => {
     // Find any field that contains "responsavel" in the name
     const responsavelField = card.fields?.find(f => {
@@ -403,16 +406,30 @@ export async function searchCardsByResponsibleField(
     
     if (!responsavelField) return false;
     
-    // Parse the field value as array of user IDs
-    const fieldUserIds = parseResponsibleFieldValue(responsavelField.value);
+    // Parse the field value as array of user IDs or names
+    const fieldValues = parseResponsibleFieldValue(responsavelField.value);
     
     // userId null = search for cards with empty responsible field
     if (userId === null) {
-      return fieldUserIds.length === 0;
+      return fieldValues.length === 0;
     }
     
-    // Check if the array contains the userId
-    return fieldUserIds.includes(userId);
+    // Check if any value matches the userId OR userName
+    return fieldValues.some(value => {
+      // Compare with ID directly
+      if (value === userId) return true;
+      
+      // Compare with name (normalized, without accents)
+      if (normalizedUserName) {
+        const normalizedValue = normalizeText(value);
+        // Exact match or partial match for names
+        if (normalizedValue === normalizedUserName) return true;
+        if (normalizedValue.includes(normalizedUserName)) return true;
+        if (normalizedUserName.includes(normalizedValue)) return true;
+      }
+      
+      return false;
+    });
   });
 
   return filteredCards;
@@ -423,6 +440,7 @@ export async function searchCardsInAllPipes(
   token: string,
   pipes: PipefyPipe[],
   userId: string | null,
+  userName: string | null,
   onProgress?: AllPipesProgressCallback,
   signal?: AbortSignal
 ): Promise<PipefyCard[]> {
@@ -439,6 +457,7 @@ export async function searchCardsInAllPipes(
       token,
       pipe.id,
       userId,
+      userName,
       pipe.phases, // Pass cached phases to avoid extra API request
       (currentPhase, totalPhases, phaseName, cardsFound) => {
         onProgress?.(
