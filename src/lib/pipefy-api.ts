@@ -23,6 +23,7 @@ export interface PipefyPhaseWithDone {
   id: string;
   name: string;
   done: boolean;
+  fields?: PipefyPipeField[];
 }
 
 export interface PipefyCardField {
@@ -197,6 +198,10 @@ export async function fetchPipes(token: string, organizationId: string): Promise
             id
             name
             done
+            fields {
+              id
+              label
+            }
           }
           start_form_fields {
             id
@@ -339,20 +344,38 @@ export function parseResponsibleFieldValue(value: string | null): string[] {
   }
 }
 
-// Find the "Responsável" field ID from a pipe's form definition
+// Find the "Responsável" field ID from a pipe's form definition or phase fields
 // This is used as fallback when a card's field doesn't have a valid field_id
 function findResponsibleFieldIdFromPipes(pipes: PipefyPipe[]): string | null {
   for (const pipe of pipes) {
-    if (!pipe.start_form_fields) continue;
+    // 1. First, search in start_form_fields
+    if (pipe.start_form_fields) {
+      const field = pipe.start_form_fields.find(f => {
+        const normalizedLabel = normalizeText(f.label);
+        return normalizedLabel.includes('responsavel');
+      });
+      
+      if (field?.id) {
+        console.log(`[Pipefy] field_id encontrado em start_form_fields do pipe "${pipe.name}": ${field.id} (label: "${field.label}")`);
+        return field.id;
+      }
+    }
     
-    const field = pipe.start_form_fields.find(f => {
-      const normalizedLabel = normalizeText(f.label);
-      return normalizedLabel.includes('responsavel');
-    });
-    
-    if (field?.id) {
-      console.log(`[Pipefy] field_id encontrado no pipe "${pipe.name}": ${field.id} (label: "${field.label}")`);
-      return field.id;
+    // 2. Then, search in phase fields
+    if (pipe.phases) {
+      for (const phase of pipe.phases) {
+        if (!phase.fields) continue;
+        
+        const field = phase.fields.find(f => {
+          const normalizedLabel = normalizeText(f.label);
+          return normalizedLabel.includes('responsavel');
+        });
+        
+        if (field?.id) {
+          console.log(`[Pipefy] field_id encontrado na fase "${phase.name}" do pipe "${pipe.name}": ${field.id} (label: "${field.label}")`);
+          return field.id;
+        }
+      }
     }
   }
   
