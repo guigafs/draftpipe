@@ -344,42 +344,39 @@ export function parseResponsibleFieldValue(value: string | null): string[] {
   }
 }
 
-// Find the "Responsável" field ID from a pipe's form definition or phase fields
-// This is used as fallback when a card's field doesn't have a valid field_id
-function findResponsibleFieldIdFromPipes(pipes: PipefyPipe[]): string | null {
+// Build an index of phaseId -> responsibleFieldId from pipe phase definitions
+// This is used when a card doesn't have the "Responsável" field in its payload
+function buildPhaseResponsibleFieldIndex(pipes: PipefyPipe[]): Map<string, string> {
+  const index = new Map<string, string>();
+  
   for (const pipe of pipes) {
-    // 1. First, search in start_form_fields
-    if (pipe.start_form_fields) {
-      const field = pipe.start_form_fields.find(f => {
-        const normalizedLabel = normalizeText(f.label);
-        return normalizedLabel.includes('responsavel');
+    if (!pipe.phases) continue;
+    
+    for (const phase of pipe.phases) {
+      if (!phase.fields) continue;
+      
+      // Priority: "responsavel pela fase" first, then any "responsavel"
+      const priorityField = phase.fields.find(f => {
+        const label = normalizeText(f.label);
+        return label.includes('responsavel pela fase');
       });
       
+      const fallbackField = phase.fields.find(f => {
+        const label = normalizeText(f.label);
+        return label.includes('responsavel');
+      });
+      
+      const field = priorityField || fallbackField;
+      
       if (field?.id) {
-        console.log(`[Pipefy] field_id encontrado em start_form_fields do pipe "${pipe.name}": ${field.id} (label: "${field.label}")`);
-        return field.id;
-      }
-    }
-    
-    // 2. Then, search in phase fields
-    if (pipe.phases) {
-      for (const phase of pipe.phases) {
-        if (!phase.fields) continue;
-        
-        const field = phase.fields.find(f => {
-          const normalizedLabel = normalizeText(f.label);
-          return normalizedLabel.includes('responsavel');
-        });
-        
-        if (field?.id) {
-          console.log(`[Pipefy] field_id encontrado na fase "${phase.name}" do pipe "${pipe.name}": ${field.id} (label: "${field.label}")`);
-          return field.id;
-        }
+        index.set(phase.id, field.id);
+        console.log(`[Pipefy] Índice fase->fieldId: "${phase.name}" (${phase.id}) -> ${field.id} (label: "${field.label}")`);
       }
     }
   }
   
-  return null;
+  console.log(`[Pipefy] Índice construído com ${index.size} fases`);
+  return index;
 }
 
 // Search cards by "Responsável" field value (userId or userName)
@@ -809,48 +806,50 @@ export async function transferCards(
   // Normalize source user name for comparison
   const normalizedSourceName = normalizeText(sourceUserName);
 
-  // Get fallback field_id from pipe definition (for cards with empty field_id)
-  const fallbackFieldId = findResponsibleFieldIdFromPipes(pipes);
+  // Build phase -> fieldId index for cards without the field in payload
+  const phaseFieldIndex = buildPhaseResponsibleFieldIndex(pipes);
 
   // Build field updates with updated user IDs (preserving other responsibles)
   const fieldUpdates: CardFieldUpdate[] = [];
   for (const cardId of cardIds) {
     const card = cards.find(c => c.id === cardId);
     if (card) {
-      // First: Find "Responsável" field by name only (don't require valid field_id)
-      let responsavelField = card.fields?.find(f => {
+      // Try to find "Responsável" field in card.fields
+      const responsavelField = card.fields?.find(f => {
         const normalizedName = normalizeText(f.name);
         return normalizedName.includes('responsavel');
       });
 
-      // If field found but has empty field_id, use fallback from pipe
-      if (responsavelField && (!responsavelField.field_id || responsavelField.field_id.trim() === '')) {
-        if (fallbackFieldId) {
-          console.log(`[Pipefy] Card ${cardId}: field_id vazio, usando fallback do pipe: ${fallbackFieldId}`);
-          responsavelField = {
-            ...responsavelField,
-            field_id: fallbackFieldId
-          };
+      let fieldId: string | null = null;
+      let currentValues: string[] = [];
+
+      if (responsavelField) {
+        // Field exists in card payload
+        fieldId = responsavelField.field_id && responsavelField.field_id.trim() !== '' 
+          ? responsavelField.field_id 
+          : null;
+        currentValues = parseResponsibleFieldValue(responsavelField.value);
+        
+        console.log(`[Pipefy] Card ${cardId}: Campo encontrado no payload (field_id: ${fieldId || 'vazio'}, valor: ${responsavelField.value})`);
+      } else {
+        // Field NOT in card payload (card "sem responsável")
+        console.log(`[Pipefy] Card ${cardId}: Campo "Responsável" NÃO está no payload do card`);
+      }
+
+      // If no valid fieldId yet, try to get from phase index
+      if (!fieldId && card.current_phase?.id) {
+        const phaseId = card.current_phase.id;
+        const phaseName = card.current_phase.name || 'desconhecida';
+        fieldId = phaseFieldIndex.get(phaseId) || null;
+        
+        if (fieldId) {
+          console.log(`[Pipefy] Card ${cardId}: Usando field_id do índice da fase "${phaseName}" (${phaseId}): ${fieldId}`);
+        } else {
+          console.log(`[Pipefy] Card ${cardId}: Fase "${phaseName}" (${phaseId}) não tem field_id no índice`);
         }
       }
 
-      // Now check if we have a valid field_id
-      const hasValidFieldId = responsavelField && responsavelField.field_id && responsavelField.field_id.trim() !== '';
-
-      // Debug logging
-      if (hasValidFieldId) {
-        console.log(`[Pipefy] Campo "Responsável" encontrado no card ${cardId}: "${responsavelField!.name}" (field_id: ${responsavelField!.field_id}, valor: ${responsavelField!.value})`);
-      } else if (responsavelField) {
-        console.log(`[Pipefy] Campo "Responsável" encontrado mas sem field_id válido no card ${cardId}: "${responsavelField.name}"`);
-      } else {
-        const fieldNames = card.fields?.map(f => `${f.name} (id: ${f.field_id || 'vazio'})`).join(', ') || 'nenhum';
-        console.log(`[Pipefy] Campo "Responsável" NÃO encontrado no card ${cardId}. Campos disponíveis: ${fieldNames}`);
-      }
-      
-      if (hasValidFieldId && responsavelField) {
-        // Parse current values from the field (can be IDs or names)
-        const currentValues = parseResponsibleFieldValue(responsavelField.value);
-        
+      if (fieldId) {
         // Remove source user by ID OR by name (normalized)
         const filteredValues = currentValues.filter(value => {
           // Skip if it's the source user ID
@@ -877,11 +876,16 @@ export async function transferCards(
         
         fieldUpdates.push({
           cardId,
-          fieldId: responsavelField.field_id,
+          fieldId,
           newFieldValue: uniqueIds,
         });
       } else {
-        // No responsible field found or no valid field_id
+        // Could not resolve fieldId
+        const phaseInfo = card.current_phase 
+          ? `fase "${card.current_phase.name}" (${card.current_phase.id})` 
+          : 'fase desconhecida';
+        console.error(`[Pipefy] Card ${cardId}: Não foi possível resolver field_id. ${phaseInfo}. Índice tem ${phaseFieldIndex.size} fases.`);
+        
         fieldUpdates.push({
           cardId,
           fieldId: undefined,
