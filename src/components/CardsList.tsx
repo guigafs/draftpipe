@@ -21,15 +21,23 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
   const [cardFilters, setCardFilters] = useState<CardFiltersState>({
     clientes: [],
     disciplinas: [],
+    fases: [],
   });
 
   // Reset filters when cards change (new search)
   useEffect(() => {
-    setCardFilters({ clientes: [], disciplinas: [] });
+    setCardFilters({ clientes: [], disciplinas: [], fases: [] });
   }, [cards]);
 
   const filteredCards = useMemo(() => {
     let result = cards;
+
+    // Filter by Fase (multi-select)
+    if (cardFilters.fases.length > 0) {
+      result = result.filter((card) =>
+        card.current_phase?.name && cardFilters.fases.includes(card.current_phase.name)
+      );
+    }
 
     // Filter by Cliente (multi-select)
     if (cardFilters.clientes.length > 0) {
