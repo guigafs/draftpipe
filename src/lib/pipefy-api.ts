@@ -732,6 +732,7 @@ export async function transferCards(
   token: string,
   cardIds: string[],
   sourceUserId: string,
+  sourceUserName: string, // Name of source user for matching name-based values
   newResponsibleId: string,
   _newResponsibleName: string, // Kept for compatibility but not used
   cards: PipefyCard[],
@@ -744,6 +745,9 @@ export async function transferCards(
     failed: [] as { cardId: string; error: string }[],
     userInvited: false,
   };
+
+  // Normalize source user name for comparison
+  const normalizedSourceName = normalizeText(sourceUserName);
 
   // Build field updates with updated user IDs (preserving other responsibles)
   const fieldUpdates: CardFieldUpdate[] = [];
@@ -769,18 +773,32 @@ export async function transferCards(
       }
       
       if (responsavelField) {
-        // Parse current user IDs from the field value
-        const currentIds = parseResponsibleFieldValue(responsavelField.value);
+        // Parse current values from the field (can be IDs or names)
+        const currentValues = parseResponsibleFieldValue(responsavelField.value);
         
-        // Remove source user, add new responsible, preserve others
-        const updatedIds = currentIds
-          .filter(id => id !== sourceUserId)
-          .concat(newResponsibleId);
+        // Remove source user by ID OR by name (normalized)
+        const filteredValues = currentValues.filter(value => {
+          // Skip if it's the source user ID
+          if (value === sourceUserId) return false;
+          
+          // Also check if it matches the source user's name
+          if (normalizedSourceName) {
+            const normalizedValue = normalizeText(value);
+            if (normalizedValue === normalizedSourceName) return false;
+            if (normalizedValue.includes(normalizedSourceName)) return false;
+            if (normalizedSourceName.includes(normalizedValue)) return false;
+          }
+          
+          return true;
+        });
+        
+        // Add new responsible ID
+        const updatedIds = [...filteredValues, newResponsibleId];
         
         // Remove duplicates
         const uniqueIds = [...new Set(updatedIds)];
         
-        console.log(`[Pipefy] Card ${cardId}: IDs anteriores: [${currentIds.join(', ')}] -> Novos IDs: [${uniqueIds.join(', ')}]`);
+        console.log(`[Pipefy] Card ${cardId}: Valores anteriores: [${currentValues.join(', ')}] -> Novos IDs: [${uniqueIds.join(', ')}]`);
         
         fieldUpdates.push({
           cardId,

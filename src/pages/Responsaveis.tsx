@@ -116,11 +116,15 @@ export default function Responsaveis() {
     const sourceUserId = selectedFromUser?.user.id === '__NO_ASSIGNEE__' 
       ? '' 
       : (selectedFromUser?.user.id || '');
+    const sourceUserName = selectedFromUser?.user.id === '__NO_ASSIGNEE__'
+      ? ''
+      : (selectedFromUser?.user.name || '');
 
     const result = await transferCards(
       token,
       cardIds,
       sourceUserId,
+      sourceUserName,
       selectedToUser.user.id,
       selectedToUser.user.name,
       selectedCards,
