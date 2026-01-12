@@ -166,16 +166,19 @@ export default function Responsaveis() {
         setCompletedBatches(completed);
         
         // Update items based on batch results
+        // CRITICAL: Normalize all IDs to string for consistent comparison
         setProgressItems((prev) => {
           const updated = [...prev];
           for (const cardId of batchResults.succeeded) {
-            const idx = updated.findIndex(item => item.cardId === cardId);
+            const cardIdStr = String(cardId);
+            const idx = updated.findIndex(item => String(item.cardId) === cardIdStr);
             if (idx !== -1) {
               updated[idx] = { ...updated[idx], status: 'success' };
             }
           }
           for (const { cardId, error } of batchResults.failed) {
-            const idx = updated.findIndex(item => item.cardId === cardId);
+            const cardIdStr = String(cardId);
+            const idx = updated.findIndex(item => String(item.cardId) === cardIdStr);
             if (idx !== -1) {
               updated[idx] = { ...updated[idx], status: 'error', error };
             }
@@ -212,9 +215,12 @@ export default function Responsaveis() {
     }
 
     // Build validation results with REAL data from Pipefy
+    // CRITICAL: Normalize IDs to string for consistent comparison
+    const succeededIds = result.succeeded.map(id => String(id));
     const validationResults: TransferResultItem[] = selectedCards.map((card) => {
-      const wasSuccessful = result.succeeded.includes(card.id);
-      const failedInfo = result.failed.find((f) => f.cardId === card.id);
+      const cardIdStr = String(card.id);
+      const wasSuccessful = succeededIds.includes(cardIdStr);
+      const failedInfo = result.failed.find((f) => String(f.cardId) === cardIdStr);
       const previousValues = previousResponsibleMap.get(card.id) || [];
 
       if (failedInfo) {

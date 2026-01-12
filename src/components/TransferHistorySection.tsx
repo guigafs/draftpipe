@@ -291,19 +291,24 @@ export function TransferHistorySection() {
                     <div className="px-4 pb-4 border-t border-border pt-3">
                       <p className="text-xs text-muted-foreground mb-2">Cards transferidos:</p>
                       <div className="space-y-1">
-                        {record.cardTitles.map((title, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 text-sm py-1 px-2 rounded bg-muted/30"
-                          >
-                            {record.succeeded.includes(record.cardIds[i]) ? (
-                              <CheckCircle className="h-3 w-3 text-success shrink-0" />
-                            ) : (
-                              <XCircle className="h-3 w-3 text-destructive shrink-0" />
-                            )}
-                            <span className="truncate">{title}</span>
-                          </div>
-                        ))}
+                        {record.cardTitles.map((title, i) => {
+                          // CRITICAL: Normalize IDs to string for consistent comparison
+                          const cardIdStr = String(record.cardIds[i]);
+                          const isSuccess = record.succeeded.map(String).includes(cardIdStr);
+                          return (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 text-sm py-1 px-2 rounded bg-muted/30"
+                            >
+                              {isSuccess ? (
+                                <CheckCircle className="h-3 w-3 text-success shrink-0" />
+                              ) : (
+                                <XCircle className="h-3 w-3 text-destructive shrink-0" />
+                              )}
+                              <span className="truncate">{title}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

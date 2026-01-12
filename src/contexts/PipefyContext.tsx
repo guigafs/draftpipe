@@ -504,14 +504,22 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
   const addHistoryRecord = useCallback(async (record: Omit<TransferRecord, 'id' | 'timestamp'>) => {
     if (!authUser?.id) return;
     
+    // CRITICAL: Normalize all IDs to strings for consistent comparison
+    const succeededIds = record.succeeded.map(id => String(id));
+    const failedCards = record.failed.map(f => ({
+      ...f,
+      cardId: String(f.cardId)
+    }));
+    
     // Build cards array for JSONB column
     const cards = record.cardIds.map((cardId, index) => {
-      const isSucceeded = record.succeeded.includes(cardId);
-      const failedEntry = record.failed.find(f => f.cardId === cardId);
+      const cardIdStr = String(cardId);
+      const isSucceeded = succeededIds.includes(cardIdStr);
+      const failedEntry = failedCards.find(f => f.cardId === cardIdStr);
       
       return {
-        id: cardId,
-        title: record.cardTitles[index] || cardId,
+        id: cardIdStr,
+        title: record.cardTitles[index] || cardIdStr,
         success: isSucceeded,
         error: failedEntry?.error || null,
       };
