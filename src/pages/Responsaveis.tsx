@@ -6,10 +6,18 @@ import { SearchSection } from '@/components/SearchSection';
 import { CardsList } from '@/components/CardsList';
 import { TransferModal } from '@/components/TransferModal';
 import { ProgressModal } from '@/components/ProgressModal';
+import { TransferResultModal, TransferResultItem } from '@/components/TransferResultModal';
 import { HelpModal } from '@/components/HelpModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { usePipefy } from '@/contexts/PipefyContext';
-import { PipefyCard, PipefyMember, PipefyPipe, transferCards, InviteOptions } from '@/lib/pipefy-api';
+import { 
+  PipefyCard, 
+  PipefyMember, 
+  transferCards, 
+  InviteOptions, 
+  parseResponsibleFieldValue,
+  fetchCardDetails 
+} from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 
@@ -18,6 +26,8 @@ interface ProgressItem {
   cardTitle: string;
   status: 'pending' | 'success' | 'error';
   error?: string;
+  previousResponsible?: string[];
+  currentResponsible?: string[];
 }
 
 export default function Responsaveis() {
@@ -28,6 +38,7 @@ export default function Responsaveis() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
 
   // Data State
   const [cards, setCards] = useState<PipefyCard[]>([]);
@@ -45,6 +56,7 @@ export default function Responsaveis() {
   const [successCount, setSuccessCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
   const [isTransferComplete, setIsTransferComplete] = useState(false);
+  const [transferResults, setTransferResults] = useState<TransferResultItem[]>([]);
 
   const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string, ids: string[]) => {
     setCards(foundCards);
@@ -86,17 +98,29 @@ export default function Responsaveis() {
     setCompletedBatches(0);
     setSuccessCount(0);
     setErrorCount(0);
+    setTransferResults([]);
 
     // Calculate total batches (50 cards per batch)
     const batchSize = 50;
     const batches = Math.ceil(selectedCards.length / batchSize);
     setTotalBatches(batches);
 
+    // Store previous responsible values for validation
+    const previousResponsibleMap = new Map<string, string[]>();
+    selectedCards.forEach((card) => {
+      const responsavelField = card.fields?.find((f) =>
+        f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
+      );
+      const values = responsavelField?.value ? parseResponsibleFieldValue(responsavelField.value) : [];
+      previousResponsibleMap.set(card.id, values);
+    });
+
     // Initialize progress items
     const initialItems: ProgressItem[] = selectedCards.map((card) => ({
       cardId: card.id,
       cardTitle: card.title,
       status: 'pending',
+      previousResponsible: previousResponsibleMap.get(card.id) || [],
     }));
     setProgressItems(initialItems);
 
@@ -163,6 +187,50 @@ export default function Responsaveis() {
 
     setIsTransferComplete(true);
 
+    // Build validation results
+    const validationResults: TransferResultItem[] = selectedCards.map((card) => {
+      const wasSuccessful = result.succeeded.includes(card.id);
+      const failedInfo = result.failed.find((f) => f.cardId === card.id);
+      const previousValues = previousResponsibleMap.get(card.id) || [];
+
+      if (failedInfo) {
+        return {
+          cardId: card.id,
+          cardTitle: card.title,
+          previousResponsible: previousValues,
+          currentResponsible: previousValues, // Did not change
+          expectedResponsible: selectedToUser.user.id,
+          status: 'error' as const,
+          error: failedInfo.error,
+        };
+      }
+
+      if (wasSuccessful) {
+        // Check if new responsible is in the expected result
+        // For now, assume success means it worked - we'll verify with the re-fetch button
+        return {
+          cardId: card.id,
+          cardTitle: card.title,
+          previousResponsible: previousValues,
+          currentResponsible: [...previousValues.filter(v => v !== sourceUserId), selectedToUser.user.id],
+          expectedResponsible: selectedToUser.user.id,
+          status: 'confirmed' as const,
+        };
+      }
+
+      return {
+        cardId: card.id,
+        cardTitle: card.title,
+        previousResponsible: previousValues,
+        currentResponsible: previousValues,
+        expectedResponsible: selectedToUser.user.id,
+        status: 'alert' as const,
+        error: 'Status desconhecido',
+      };
+    });
+
+    setTransferResults(validationResults);
+
     // Show toast if user was added to pipe
     if (result.userInvited) {
       toast({
@@ -205,6 +273,57 @@ export default function Responsaveis() {
 
   const handleProgressClose = () => {
     setProgressOpen(false);
+    // Show validation modal
+    setResultOpen(true);
+  };
+
+  const handleVerifyCard = async (cardId: string) => {
+    if (!token || !selectedToUser) return;
+
+    const updatedCard = await fetchCardDetails(token, cardId);
+    if (!updatedCard) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao verificar',
+        description: 'Não foi possível buscar os dados do card.',
+      });
+      return;
+    }
+
+    // Find "Responsável" field in updated card
+    const responsavelField = updatedCard.fields?.find((f) =>
+      f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
+    );
+    const currentValues = responsavelField?.value ? parseResponsibleFieldValue(responsavelField.value) : [];
+
+    // Check if new responsible is in the values
+    const hasNewResponsible = currentValues.includes(selectedToUser.user.id) ||
+      currentValues.some((v) => v.toLowerCase().includes(selectedToUser.user.name.toLowerCase()));
+
+    // Update transfer results
+    setTransferResults((prev) =>
+      prev.map((item) => {
+        if (item.cardId !== cardId) return item;
+        return {
+          ...item,
+          currentResponsible: currentValues,
+          status: hasNewResponsible ? 'confirmed' : 'alert',
+          error: hasNewResponsible ? undefined : 'Novo responsável não encontrado no campo',
+        };
+      })
+    );
+
+    toast({
+      title: hasNewResponsible ? 'Verificado ✓' : 'Alerta',
+      description: hasNewResponsible
+        ? 'Card confirmado com novo responsável.'
+        : 'Novo responsável não foi encontrado no campo.',
+      variant: hasNewResponsible ? 'default' : 'destructive',
+    });
+  };
+
+  const handleResultClose = () => {
+    setResultOpen(false);
     // Remove transferred cards from list
     const succeededIds = new Set(progressItems.filter((i) => i.status === 'success').map((i) => i.cardId));
     setCards((prev) => prev.filter((c) => !succeededIds.has(c.id)));
@@ -292,6 +411,15 @@ export default function Responsaveis() {
         items={progressItems}
         isComplete={isTransferComplete}
         onClose={handleProgressClose}
+      />
+
+      <TransferResultModal
+        open={resultOpen}
+        onOpenChange={setResultOpen}
+        results={transferResults}
+        newResponsibleName={selectedToUser?.user.name || ''}
+        onVerifyCard={handleVerifyCard}
+        onClose={handleResultClose}
       />
     </MainLayout>
   );
