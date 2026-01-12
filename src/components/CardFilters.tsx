@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { PipefyCard } from '@/lib/pipefy-api';
+import { PipefyCard, PipefyCardField } from '@/lib/pipefy-api';
 
 export interface CardFiltersState {
   clientes: string[];
@@ -19,8 +19,8 @@ interface CardFiltersProps {
   onFiltersChange: (filters: CardFiltersState) => void;
 }
 
-// Parse field value removing brackets and quotes
-export function parseFieldValue(value: string | null): string {
+// Helper to parse string value
+function parseStringValue(value: string | null): string {
   if (!value) return '';
   
   // Try to parse as JSON array
@@ -37,6 +37,26 @@ export function parseFieldValue(value: string | null): string {
       .replace(/["']?\]$/, '')
       .trim();
   }
+}
+
+// Parse field value - prioritizes connectedRepoItems for database fields
+export function parseFieldValue(field: PipefyCardField | string | null): string {
+  // If null or undefined
+  if (field === null || field === undefined) {
+    return '';
+  }
+  
+  // If it's a field object with connectedRepoItems
+  if (typeof field === 'object') {
+    if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
+      return field.connectedRepoItems.map(item => item.title).join(', ');
+    }
+    // Fallback to value
+    return parseStringValue(field.value);
+  }
+  
+  // If it's a string directly (backward compatibility)
+  return parseStringValue(field);
 }
 
 interface MultiSelectDropdownProps {
@@ -225,11 +245,27 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
 
       card.fields?.forEach((field) => {
         const fieldName = field.name.toLowerCase();
-        const cleanValue = parseFieldValue(field.value);
-        if (fieldName === 'cliente' && cleanValue) {
-          clienteSet.add(cleanValue);
-        } else if (fieldName === 'disciplina' && cleanValue) {
-          disciplinaSet.add(cleanValue);
+        
+        if (fieldName === 'cliente') {
+          // Prioritize connectedRepoItems for database fields
+          if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
+            field.connectedRepoItems.forEach(item => {
+              if (item.title) clienteSet.add(item.title);
+            });
+          } else {
+            const cleanValue = parseFieldValue(field);
+            if (cleanValue) clienteSet.add(cleanValue);
+          }
+        } else if (fieldName === 'disciplina') {
+          // Prioritize connectedRepoItems for database fields
+          if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
+            field.connectedRepoItems.forEach(item => {
+              if (item.title) disciplinaSet.add(item.title);
+            });
+          } else {
+            const cleanValue = parseFieldValue(field);
+            if (cleanValue) disciplinaSet.add(cleanValue);
+          }
         }
       });
     });

@@ -26,10 +26,16 @@ export interface PipefyPhaseWithDone {
   fields?: PipefyPipeField[];
 }
 
+export interface ConnectedRepoItem {
+  id: string;
+  title: string;
+}
+
 export interface PipefyCardField {
   field_id: string;
   name: string;
   value: string | null;
+  connectedRepoItems?: ConnectedRepoItem[];
 }
 
 export interface PipefyCard {
@@ -271,6 +277,16 @@ async function fetchAllCardsFromPhase(
                   field { id }
                   name
                   value
+                  connectedRepoItems {
+                    ... on Card {
+                      id
+                      title
+                    }
+                    ... on TableRecord {
+                      id
+                      title
+                    }
+                  }
                 }
               }
             }
@@ -292,7 +308,8 @@ async function fetchAllCardsFromPhase(
       };
     }>(token, query, { phaseId, after: cursor });
 
-    interface RawField { field?: { id: string }; name: string; value: string | null }
+    interface RawConnectedItem { id: string; title: string }
+    interface RawField { field?: { id: string }; name: string; value: string | null; connectedRepoItems?: RawConnectedItem[] }
     interface RawNode { id: string; title: string; current_phase: PipefyPhase; assignees: PipefyUser[]; created_at?: string; fields?: RawField[] }
     
     const cards = data.phase.cards.edges.map(edge => {
@@ -307,6 +324,10 @@ async function fetchAllCardsFromPhase(
           field_id: f.field?.id || '',
           name: f.name,
           value: f.value,
+          connectedRepoItems: f.connectedRepoItems?.map(item => ({
+            id: item.id,
+            title: item.title
+          })) || [],
         })),
       };
       return card;
