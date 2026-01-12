@@ -5,9 +5,28 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { PipefyCard, parseResponsibleFieldValue } from '@/lib/pipefy-api';
+import { PipefyCard, PipefyCardField, parseResponsibleFieldValue } from '@/lib/pipefy-api';
 import { cn } from '@/lib/utils';
 import { CardFilters, CardFiltersState, parseFieldValue } from './CardFilters';
+
+// Helper to get field display value considering connectedRepoItems
+function getFieldDisplayValue(field: PipefyCardField): string {
+  if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
+    return field.connectedRepoItems.map(item => item.title).join(', ');
+  }
+  return parseFieldValue(field);
+}
+
+// Helper to check if field matches filter values
+function fieldMatchesFilter(field: PipefyCardField, filterValues: string[]): boolean {
+  // Check connectedRepoItems first (database fields)
+  if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
+    return field.connectedRepoItems.some(item => filterValues.includes(item.title));
+  }
+  // Fallback to value (text fields)
+  const cleanValue = parseFieldValue(field);
+  return filterValues.includes(cleanValue);
+}
 
 interface CardsListProps {
   cards: PipefyCard[];
@@ -39,22 +58,22 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
       );
     }
 
-    // Filter by Cliente (multi-select)
+    // Filter by Cliente (multi-select) - supports both database and text fields
     if (cardFilters.clientes.length > 0) {
-      result = result.filter((card) =>
-        card.fields?.some(
-          (f) => f.name.toLowerCase() === 'cliente' && cardFilters.clientes.includes(parseFieldValue(f.value))
-        )
-      );
+      result = result.filter((card) => {
+        const clienteField = card.fields?.find(f => f.name.toLowerCase() === 'cliente');
+        if (!clienteField) return false;
+        return fieldMatchesFilter(clienteField, cardFilters.clientes);
+      });
     }
 
-    // Filter by Disciplina (multi-select)
+    // Filter by Disciplina (multi-select) - supports both database and text fields
     if (cardFilters.disciplinas.length > 0) {
-      result = result.filter((card) =>
-        card.fields?.some(
-          (f) => f.name.toLowerCase() === 'disciplina' && cardFilters.disciplinas.includes(parseFieldValue(f.value))
-        )
-      );
+      result = result.filter((card) => {
+        const disciplinaField = card.fields?.find(f => f.name.toLowerCase() === 'disciplina');
+        if (!disciplinaField) return false;
+        return fieldMatchesFilter(disciplinaField, cardFilters.disciplinas);
+      });
     }
 
     // Filter by search text
@@ -258,18 +277,19 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
                     <div className="flex flex-wrap gap-1 mt-2">
                       {card.fields
                         .filter((f) =>
-                          ['cliente', 'disciplina'].includes(f.name.toLowerCase()) && f.value
+                          ['cliente', 'disciplina'].includes(f.name.toLowerCase()) && 
+                          (f.value || (f.connectedRepoItems && f.connectedRepoItems.length > 0))
                         )
                         .map((field) => {
-                          const cleanValue = parseFieldValue(field.value);
-                          if (!cleanValue) return null;
+                          const displayValue = getFieldDisplayValue(field);
+                          if (!displayValue) return null;
                           return (
                             <Badge
                               key={field.name}
                               variant="outline"
                               className="text-xs"
                             >
-                              {field.name}: {cleanValue}
+                              {field.name}: {displayValue}
                             </Badge>
                           );
                         })}
