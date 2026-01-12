@@ -278,11 +278,11 @@ async function fetchAllCardsFromPhase(
                   name
                   value
                   connectedRepoItems {
-                    ... on Card {
+                    ... on PublicCard {
                       id
                       title
                     }
-                    ... on TableRecord {
+                    ... on PublicTableRecord {
                       id
                       title
                     }
