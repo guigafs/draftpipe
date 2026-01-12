@@ -815,7 +815,8 @@ async function batchUpdateCards(
     // Process each field update result
     for (let i = 0; i < validUpdates.length; i++) {
       const key = `field_${i}`;
-      const cardId = validUpdates[i].cardId;
+      // CRITICAL: Always normalize cardId to string for consistent comparison
+      const cardId = String(validUpdates[i].cardId);
 
       if (data.data?.[key]?.success) {
         console.log(`[Pipefy] Card ${cardId}: Campo "Responsável" atualizado com sucesso`);
@@ -835,10 +836,14 @@ async function batchUpdateCards(
     
     // Mark cards without valid field as failed
     for (const update of fieldUpdates) {
+      const cardIdStr = String(update.cardId);
       if (!update.fieldId || !update.newFieldValue) {
-        if (!results.succeeded.includes(update.cardId) && !results.failed.some(f => f.cardId === update.cardId)) {
+        // Check using string comparison
+        const alreadySucceeded = results.succeeded.some(id => String(id) === cardIdStr);
+        const alreadyFailed = results.failed.some(f => String(f.cardId) === cardIdStr);
+        if (!alreadySucceeded && !alreadyFailed) {
           results.failed.push({
-            cardId: update.cardId,
+            cardId: cardIdStr,
             error: 'Campo "Responsável" não encontrado'
           });
         }
