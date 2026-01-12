@@ -19,6 +19,27 @@ interface CardFiltersProps {
   onFiltersChange: (filters: CardFiltersState) => void;
 }
 
+// Helper to normalize field name (remove accents, lowercase, remove special characters)
+export function normalizeFieldName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove accents
+    .replace(/[^a-z0-9]/g, ''); // Remove special characters
+}
+
+// Check if field is a "Cliente" field
+export function isClienteField(fieldName: string): boolean {
+  const normalized = normalizeFieldName(fieldName);
+  return normalized.includes('cliente');
+}
+
+// Check if field is a "Disciplina" field
+export function isDisciplinaField(fieldName: string): boolean {
+  const normalized = normalizeFieldName(fieldName);
+  return normalized.includes('disciplina');
+}
+
 // Helper to parse string value
 function parseStringValue(value: string | null): string {
   if (!value) return '';
@@ -244,25 +265,26 @@ export function CardFilters({ cards, filters, onFiltersChange }: CardFiltersProp
       }
 
       card.fields?.forEach((field) => {
-        const fieldName = field.name.toLowerCase();
-        
-        if (fieldName === 'cliente') {
+        // Use flexible field identification
+        if (isClienteField(field.name)) {
           // Prioritize connectedRepoItems for database fields
           if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
             field.connectedRepoItems.forEach(item => {
               if (item.title) clienteSet.add(item.title);
             });
-          } else {
+          } else if (field.value) {
             const cleanValue = parseFieldValue(field);
             if (cleanValue) clienteSet.add(cleanValue);
           }
-        } else if (fieldName === 'disciplina') {
+        }
+        
+        if (isDisciplinaField(field.name)) {
           // Prioritize connectedRepoItems for database fields
           if (field.connectedRepoItems && field.connectedRepoItems.length > 0) {
             field.connectedRepoItems.forEach(item => {
               if (item.title) disciplinaSet.add(item.title);
             });
-          } else {
+          } else if (field.value) {
             const cleanValue = parseFieldValue(field);
             if (cleanValue) disciplinaSet.add(cleanValue);
           }

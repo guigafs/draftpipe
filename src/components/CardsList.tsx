@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PipefyCard, PipefyCardField, parseResponsibleFieldValue } from '@/lib/pipefy-api';
 import { cn } from '@/lib/utils';
-import { CardFilters, CardFiltersState, parseFieldValue } from './CardFilters';
+import { CardFilters, CardFiltersState, parseFieldValue, isClienteField, isDisciplinaField } from './CardFilters';
 
 // Helper to get field display value considering connectedRepoItems
 function getFieldDisplayValue(field: PipefyCardField): string {
@@ -26,6 +26,30 @@ function fieldMatchesFilter(field: PipefyCardField, filterValues: string[]): boo
   // Fallback to value (text fields)
   const cleanValue = parseFieldValue(field);
   return filterValues.includes(cleanValue);
+}
+
+// Find cliente field - prioritizes database fields (with connectedRepoItems)
+function findClienteField(fields: PipefyCardField[]): PipefyCardField | undefined {
+  // First look for database field
+  const databaseField = fields.find(f => 
+    isClienteField(f.name) && f.connectedRepoItems && f.connectedRepoItems.length > 0
+  );
+  if (databaseField) return databaseField;
+  
+  // Fallback to text field
+  return fields.find(f => isClienteField(f.name) && f.value);
+}
+
+// Find disciplina field - prioritizes database fields (with connectedRepoItems)
+function findDisciplinaField(fields: PipefyCardField[]): PipefyCardField | undefined {
+  // First look for database field
+  const databaseField = fields.find(f => 
+    isDisciplinaField(f.name) && f.connectedRepoItems && f.connectedRepoItems.length > 0
+  );
+  if (databaseField) return databaseField;
+  
+  // Fallback to text field
+  return fields.find(f => isDisciplinaField(f.name) && f.value);
 }
 
 interface CardsListProps {
@@ -61,7 +85,7 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
     // Filter by Cliente (multi-select) - supports both database and text fields
     if (cardFilters.clientes.length > 0) {
       result = result.filter((card) => {
-        const clienteField = card.fields?.find(f => f.name.toLowerCase() === 'cliente');
+        const clienteField = findClienteField(card.fields || []);
         if (!clienteField) return false;
         return fieldMatchesFilter(clienteField, cardFilters.clientes);
       });
@@ -70,7 +94,7 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
     // Filter by Disciplina (multi-select) - supports both database and text fields
     if (cardFilters.disciplinas.length > 0) {
       result = result.filter((card) => {
-        const disciplinaField = card.fields?.find(f => f.name.toLowerCase() === 'disciplina');
+        const disciplinaField = findDisciplinaField(card.fields || []);
         if (!disciplinaField) return false;
         return fieldMatchesFilter(disciplinaField, cardFilters.disciplinas);
       });
@@ -273,28 +297,27 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
                   </div>
 
                   {/* Cliente and Disciplina badges */}
-                  {card.fields && card.fields.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {card.fields
-                        .filter((f) =>
-                          ['cliente', 'disciplina'].includes(f.name.toLowerCase()) && 
-                          (f.value || (f.connectedRepoItems && f.connectedRepoItems.length > 0))
-                        )
-                        .map((field) => {
-                          const displayValue = getFieldDisplayValue(field);
-                          if (!displayValue) return null;
-                          return (
-                            <Badge
-                              key={field.name}
-                              variant="outline"
-                              className="text-xs"
-                            >
-                              {field.name}: {displayValue}
-                            </Badge>
-                          );
-                        })}
-                    </div>
-                  )}
+                  {card.fields && card.fields.length > 0 && (() => {
+                    const clienteField = findClienteField(card.fields);
+                    const disciplinaField = findDisciplinaField(card.fields);
+                    
+                    if (!clienteField && !disciplinaField) return null;
+                    
+                    return (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {clienteField && (
+                          <Badge variant="outline" className="text-xs">
+                            Cliente: {getFieldDisplayValue(clienteField)}
+                          </Badge>
+                        )}
+                        {disciplinaField && (
+                          <Badge variant="outline" className="text-xs">
+                            Disciplina: {getFieldDisplayValue(disciplinaField)}
+                          </Badge>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Mostrar usuários do campo Responsável */}
                   {(() => {
