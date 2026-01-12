@@ -878,7 +878,7 @@ export async function transferCards(
   sourceUserId: string,
   sourceUserName: string, // Name of source user for matching name-based values
   newResponsibleId: string,
-  _newResponsibleName: string, // Kept for compatibility but not used
+  newResponsibleName: string, // Name of new responsible user (used for field update)
   cards: PipefyCard[],
   pipes: PipefyPipe[], // Used to get field_id fallback from pipe definition
   batchSize: number = 50,
@@ -899,8 +899,20 @@ export async function transferCards(
 
   // Build field updates with updated user IDs (preserving other responsibles)
   const fieldUpdates: CardFieldUpdate[] = [];
+  
+  console.log(`[Pipefy] Processando ${cardIds.length} cards. IDs recebidos: [${cardIds.join(', ')}]`);
+  console.log(`[Pipefy] Cards disponíveis: ${cards.length}. IDs: [${cards.map(c => c.id).join(', ')}]`);
+  
   for (const cardId of cardIds) {
-    const card = cards.find(c => c.id === cardId);
+    // CRITICAL: Normalize both to string for comparison (API can return number or string)
+    const card = cards.find(c => String(c.id) === String(cardId));
+    
+    if (!card) {
+      console.error(`[Pipefy] Card ${cardId} NÃO encontrado no array de cards. Tipos: cardId=${typeof cardId}, cards[0].id=${typeof cards[0]?.id}`);
+      results.failed.push({ cardId: String(cardId), error: 'Card não encontrado no array local' });
+      continue;
+    }
+    
     if (card) {
       // Try to find "Responsável" field in card.fields
       const responsavelField = card.fields?.find(f => {
@@ -954,18 +966,18 @@ export async function transferCards(
           return true;
         });
         
-        // Add new responsible ID
-        const updatedIds = [...filteredValues, newResponsibleId];
+        // Add new responsible NAME (the field stores names, not IDs)
+        const updatedNames = [...filteredValues, newResponsibleName];
         
         // Remove duplicates
-        const uniqueIds = [...new Set(updatedIds)];
+        const uniqueNames = [...new Set(updatedNames)];
         
-        console.log(`[Pipefy] Card ${cardId}: Valores anteriores: [${currentValues.join(', ')}] -> Novos IDs: [${uniqueIds.join(', ')}]`);
+        console.log(`[Pipefy] Card ${cardId}: Valores anteriores: [${currentValues.join(', ')}] -> Novos valores: [${uniqueNames.join(', ')}]`);
         
         fieldUpdates.push({
           cardId,
           fieldId,
-          newFieldValue: uniqueIds,
+          newFieldValue: uniqueNames,
         });
       } else {
         // Could not resolve fieldId
