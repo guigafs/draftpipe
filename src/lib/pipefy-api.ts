@@ -589,40 +589,64 @@ export async function searchUserByEmail(token: string, email: string): Promise<P
   }
 }
 
-// Update card assignee
-export async function updateCardAssignee(
+// Fetch single card details for validation
+export async function fetchCardDetails(
   token: string,
-  cardId: string,
-  newAssigneeIds: string[]
-): Promise<{ success: boolean; card?: PipefyCard; error?: string }> {
-  const mutation = `
-    mutation($cardId: ID!, $assigneeIds: [ID]) {
-      updateCard(input: {id: $cardId, assignee_ids: $assigneeIds}) {
-        card {
+  cardId: string
+): Promise<PipefyCard | null> {
+  const query = `
+    query($cardId: ID!) {
+      card(id: $cardId) {
+        id
+        title
+        current_phase {
           id
-          title
-          assignees {
-            id
-            email
-            name
-          }
+          name
+        }
+        assignees {
+          id
+          name
+          email
+        }
+        fields {
+          field { id }
+          name
+          value
         }
       }
     }
   `;
 
   try {
-    const data = await rateLimitedRequest<{ updateCard: { card: PipefyCard } }>(
-      token,
-      mutation,
-      { cardId, assigneeIds: newAssigneeIds }
-    );
-    return { success: true, card: data.updateCard.card };
-  } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Erro ao atualizar card' 
+    interface RawField { field?: { id: string }; name: string; value: string | null }
+    interface RawCard { 
+      id: string; 
+      title: string; 
+      current_phase: PipefyPhase; 
+      assignees: PipefyUser[]; 
+      fields?: RawField[] 
+    }
+    
+    const data = await rateLimitedRequest<{ card: RawCard }>(token, query, { cardId });
+    
+    if (!data.card) return null;
+    
+    const card: PipefyCard = {
+      id: data.card.id,
+      title: data.card.title,
+      current_phase: data.card.current_phase,
+      assignees: data.card.assignees,
+      fields: data.card.fields?.map((f) => ({
+        field_id: f.field?.id || '',
+        name: f.name,
+        value: f.value,
+      })),
     };
+    
+    return card;
+  } catch (error) {
+    console.error(`[Pipefy] Erro ao buscar detalhes do card ${cardId}:`, error);
+    return null;
   }
 }
 
@@ -687,6 +711,7 @@ async function batchUpdateCards(
   ` : '';
 
   // Build dynamic mutation with aliases for field updates ONLY (no card assignee updates)
+  // Now also returns the updated fields for validation
   const cardMutations = validUpdates.map((update, index) => {
     // Format value as JSON array of IDs for Pipefy connection field
     const valueStr = JSON.stringify(update.newFieldValue);
@@ -697,6 +722,11 @@ async function batchUpdateCards(
       card {
         id
         title
+        fields {
+          field { id }
+          name
+          value
+        }
       }
     }`;
   }).join('\n');
