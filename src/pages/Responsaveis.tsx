@@ -16,7 +16,8 @@ import {
   transferCards, 
   InviteOptions, 
   parseResponsibleFieldValue,
-  fetchCardDetails 
+  fetchCardDetails,
+  fetchMultipleCardDetails
 } from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -56,6 +57,8 @@ export default function Responsaveis() {
   const [successCount, setSuccessCount] = useState(0);
   const [errorCount, setErrorCount] = useState(0);
   const [isTransferComplete, setIsTransferComplete] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationProgress, setVerificationProgress] = useState(0);
   const [transferResults, setTransferResults] = useState<TransferResultItem[]>([]);
 
   const handleCardsFound = useCallback((foundCards: PipefyCard[], pipe: string, ids: string[]) => {
@@ -95,6 +98,8 @@ export default function Responsaveis() {
     setConfirmOpen(false);
     setProgressOpen(true);
     setIsTransferComplete(false);
+    setIsVerifying(false);
+    setVerificationProgress(0);
     setCompletedBatches(0);
     setSuccessCount(0);
     setErrorCount(0);
@@ -187,7 +192,26 @@ export default function Responsaveis() {
 
     setIsTransferComplete(true);
 
-    // Build validation results
+    // AUTOMATIC VERIFICATION PHASE
+    // Fetch all successful cards to validate the field was actually updated
+    setIsVerifying(true);
+    setVerificationProgress(0);
+
+    const succeededCardIds = result.succeeded;
+    let verifiedCards: Map<string, PipefyCard | null> = new Map();
+
+    if (succeededCardIds.length > 0) {
+      verifiedCards = await fetchMultipleCardDetails(
+        token,
+        succeededCardIds,
+        20, // batch size for verification
+        (completed, total) => {
+          setVerificationProgress(Math.round((completed / total) * 100));
+        }
+      );
+    }
+
+    // Build validation results with REAL data from Pipefy
     const validationResults: TransferResultItem[] = selectedCards.map((card) => {
       const wasSuccessful = result.succeeded.includes(card.id);
       const failedInfo = result.failed.find((f) => f.cardId === card.id);
@@ -206,15 +230,41 @@ export default function Responsaveis() {
       }
 
       if (wasSuccessful) {
-        // Check if new responsible is in the expected result
-        // For now, assume success means it worked - we'll verify with the re-fetch button
+        // Get REAL data from Pipefy verification
+        const verifiedCard = verifiedCards.get(card.id);
+        
+        if (verifiedCard) {
+          const responsavelField = verifiedCard.fields?.find((f) =>
+            f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
+          );
+          const currentValues = responsavelField?.value 
+            ? parseResponsibleFieldValue(responsavelField.value) 
+            : [];
+          
+          // Check if new responsible is in the current values
+          const hasNewResponsible = currentValues.includes(selectedToUser.user.id) ||
+            currentValues.some((v) => v.toLowerCase().includes(selectedToUser.user.name.toLowerCase()));
+          
+          return {
+            cardId: card.id,
+            cardTitle: card.title,
+            previousResponsible: previousValues,
+            currentResponsible: currentValues, // REAL data from Pipefy
+            expectedResponsible: selectedToUser.user.id,
+            status: hasNewResponsible ? 'confirmed' as const : 'alert' as const,
+            error: hasNewResponsible ? undefined : 'Novo responsável não encontrado após verificação automática',
+          };
+        }
+        
+        // Could not fetch verification, mark as alert
         return {
           cardId: card.id,
           cardTitle: card.title,
           previousResponsible: previousValues,
-          currentResponsible: [...previousValues.filter(v => v !== sourceUserId), selectedToUser.user.id],
+          currentResponsible: previousValues,
           expectedResponsible: selectedToUser.user.id,
-          status: 'confirmed' as const,
+          status: 'alert' as const,
+          error: 'Não foi possível verificar o card automaticamente',
         };
       }
 
@@ -230,6 +280,7 @@ export default function Responsaveis() {
     });
 
     setTransferResults(validationResults);
+    setIsVerifying(false);
 
     // Show toast if user was added to pipe
     if (result.userInvited) {
@@ -410,6 +461,8 @@ export default function Responsaveis() {
         errorCount={errorCount}
         items={progressItems}
         isComplete={isTransferComplete}
+        isVerifying={isVerifying}
+        verificationProgress={verificationProgress}
         onClose={handleProgressClose}
       />
 

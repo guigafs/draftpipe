@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +30,8 @@ interface ProgressModalProps {
   errorCount: number;
   items: ProgressItem[];
   isComplete: boolean;
+  isVerifying?: boolean;
+  verificationProgress?: number;
   onClose: () => void;
 }
 
@@ -43,6 +45,8 @@ export function ProgressModal({
   errorCount,
   items,
   isComplete,
+  isVerifying = false,
+  verificationProgress = 0,
   onClose,
 }: ProgressModalProps) {
   const [showErrors, setShowErrors] = useState(false);
@@ -50,29 +54,48 @@ export function ProgressModal({
   const errorItems = items.filter((i) => i.status === 'error');
   const percentage = totalBatches > 0 ? Math.round((completedBatches / totalBatches) * 100) : 0;
 
+  const getTitle = () => {
+    if (isVerifying) return 'Verificando Cards...';
+    if (isComplete) return 'Transferência Concluída';
+    return 'Transferindo Cards...';
+  };
+
+  const getDescription = () => {
+    if (isVerifying) return 'Buscando dados atualizados no Pipefy para validação';
+    if (isComplete) return 'A operação foi finalizada';
+    return `Processando lote ${completedBatches} de ${totalBatches} (${cards.length} cards)`;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-xl">
-            {isComplete ? 'Transferência Concluída' : 'Transferindo Cards...'}
-          </DialogTitle>
-          <DialogDescription>
-            {isComplete
-              ? 'A operação foi finalizada'
-              : `Processando lote ${completedBatches} de ${totalBatches} (${cards.length} cards)`}
-          </DialogDescription>
+          <DialogTitle className="text-xl">{getTitle()}</DialogTitle>
+          <DialogDescription>{getDescription()}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Progress Bar */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Progresso</span>
-              <span className="font-medium">{percentage}%</span>
+          {/* Progress Bar - Transfer or Verification */}
+          {isVerifying ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-sm font-medium">Verificando cards no Pipefy...</span>
+              </div>
+              <Progress value={verificationProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground">
+                Buscando dados atualizados para validação ({verificationProgress}%)
+              </p>
             </div>
-            <Progress value={percentage} className="h-2" />
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Progresso</span>
+                <span className="font-medium">{percentage}%</span>
+              </div>
+              <Progress value={percentage} className="h-2" />
+            </div>
+          )}
 
           {/* Status Summary */}
           {isComplete && (
@@ -152,14 +175,14 @@ export function ProgressModal({
         </div>
 
         <DialogFooter>
-          {isComplete ? (
+          {isComplete && !isVerifying ? (
             <Button onClick={onClose} className="btn-primary">
-              Concluir
+              Ver Resultados
             </Button>
           ) : (
             <Button disabled variant="outline" className="gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Processando...
+              {isVerifying ? 'Verificando...' : 'Processando...'}
             </Button>
           )}
         </DialogFooter>
