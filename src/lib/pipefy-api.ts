@@ -589,6 +589,15 @@ export async function searchUserByEmail(token: string, email: string): Promise<P
   }
 }
 
+// Helper to chunk array into batches
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
+
 // Fetch single card details for validation
 export async function fetchCardDetails(
   token: string,
@@ -650,13 +659,36 @@ export async function fetchCardDetails(
   }
 }
 
-// Helper to split array into chunks
-function chunkArray<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
+// Fetch multiple card details for batch validation
+export async function fetchMultipleCardDetails(
+  token: string,
+  cardIds: string[],
+  batchSize: number = 20,
+  onProgress?: (completed: number, total: number) => void
+): Promise<Map<string, PipefyCard | null>> {
+  const results = new Map<string, PipefyCard | null>();
+  const batches = chunkArray(cardIds, batchSize);
+  
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    
+    // Fetch cards in parallel within each batch
+    const promises = batch.map(cardId => fetchCardDetails(token, cardId));
+    const batchResults = await Promise.all(promises);
+    
+    batch.forEach((cardId, index) => {
+      results.set(cardId, batchResults[index]);
+    });
+    
+    onProgress?.(i + 1, batches.length);
+    
+    // Small delay between batches to avoid rate limits
+    if (i < batches.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
   }
-  return chunks;
+  
+  return results;
 }
 
 // Options for inviting user to pipe
