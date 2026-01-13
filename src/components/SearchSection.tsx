@@ -51,9 +51,13 @@ export function SearchSection({
     const result = await refreshPipes();
     setIsRefreshing(false);
     
+    // Log do resultado do refresh
+    console.log('[SearchSection] Resultado refreshPipes:', result);
+    
     if (result.cacheSaved) {
       toast.success('Lista de pipes atualizada e salva no cache!');
     } else if (result.ok) {
+      console.warn('[SearchSection] Cache não salvo:', result.cacheError);
       toast.warning(`Pipes atualizados, mas não foi possível salvar no cache: ${result.cacheError || 'Erro desconhecido'}`);
     } else {
       toast.error(`Erro ao atualizar pipes: ${result.cacheError || 'Erro desconhecido'}`);
