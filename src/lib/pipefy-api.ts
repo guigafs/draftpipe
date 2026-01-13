@@ -803,20 +803,21 @@ async function batchUpdateCards(
   // Build dynamic mutation with aliases for field updates ONLY (no card assignee updates)
   // Now also returns the updated fields for validation
   const cardMutations = validUpdates.map((update, index) => {
-    // Format value as JSON array of IDs for Pipefy connection field
-    const valueStr = JSON.stringify(update.newFieldValue);
+    // Format value as comma-separated quoted strings (not JSON array)
+    // Pipefy expects: "id1", "id2" instead of ["id1", "id2"]
+    const valueStr = update.newFieldValue.map(v => `"${v}"`).join(', ');
     
     // Log mutation details for debugging
     console.log(`[Pipefy] Mutation field_${index}: card ${update.cardId}, fieldId ${update.fieldId}, new_value ${valueStr}`);
     
     return `
-    field_${index}: updateCardField(input: {card_id: "${update.cardId}", field_id: "${update.fieldId}", new_value: ${valueStr}}) {
+    field_${index}: updateCardField(input: {card_id: "${update.cardId}", field_id: "${update.fieldId}", new_value: [${valueStr}]}) {
       success
       card {
         id
         title
         fields {
-          field { id }
+          field_id
           name
           value
         }
@@ -831,6 +832,7 @@ async function batchUpdateCards(
 
   console.log('[Pipefy] Executando mutation:', inviteOptions ? 'com convite ao pipe' : 'sem convite');
   console.log('[Pipefy] Atualizando apenas campos "Responsável", assignees não serão alterados');
+  console.log('[Pipefy] Mutation completa a ser enviada:', mutation);
 
   try {
     const response = await fetch(PIPEFY_API_URL, {
