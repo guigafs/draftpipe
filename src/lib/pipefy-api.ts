@@ -966,18 +966,18 @@ export async function transferCards(
           return true;
         });
         
-        // Add new responsible NAME (the field stores names, not IDs)
-        const updatedNames = [...filteredValues, newResponsibleName];
+        // Add new responsible ID (API requires IDs, not names)
+        const updatedValues = [...filteredValues, newResponsibleId];
         
         // Remove duplicates
-        const uniqueNames = [...new Set(updatedNames)];
+        const uniqueValues = [...new Set(updatedValues)];
         
-        console.log(`[Pipefy] Card ${cardId}: Valores anteriores: [${currentValues.join(', ')}] -> Novos valores: [${uniqueNames.join(', ')}]`);
+        console.log(`[Pipefy] Card ${cardId}: Valores anteriores: [${currentValues.join(', ')}] -> Novos valores: [${uniqueValues.join(', ')}]`);
         
         fieldUpdates.push({
           cardId,
           fieldId,
-          newFieldValue: uniqueNames,
+          newFieldValue: uniqueValues,
         });
       } else {
         // Could not resolve fieldId
