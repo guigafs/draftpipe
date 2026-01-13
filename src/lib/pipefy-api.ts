@@ -356,12 +356,17 @@ export function parseResponsibleFieldValue(value: string | null): string[] {
   try {
     const parsed = JSON.parse(value);
     if (Array.isArray(parsed)) {
-      return parsed.map(v => String(v));
+      // Filtrar valores vazios, nulos ou undefined
+      return parsed
+        .map(v => String(v).trim())
+        .filter(v => v !== '' && v !== 'null' && v !== 'undefined');
     }
-    return [String(parsed)];
+    const strValue = String(parsed).trim();
+    return strValue && strValue !== 'null' && strValue !== 'undefined' ? [strValue] : [];
   } catch {
     // If not valid JSON, treat as single value
-    return [value.trim()];
+    const trimmed = value.trim();
+    return trimmed && trimmed !== 'null' && trimmed !== 'undefined' ? [trimmed] : [];
   }
 }
 
@@ -487,19 +492,33 @@ export async function searchCardsByResponsibleField(
   const normalizedUserName = userName ? normalizeText(userName) : null;
   
   const filteredCards = allCards.filter(card => {
-    // Find any field that contains "responsavel" in the name
-    const responsavelField = card.fields?.find(f => {
+    // Prioridade: "responsavel pela fase" primeiro, depois qualquer "responsavel"
+    const priorityField = card.fields?.find(f => {
       const normalizedName = normalizeText(f.name);
-      return normalizedName.includes('responsavel');
+      return normalizedName.includes('responsavel pela fase');
     });
+
+    const fallbackField = card.fields?.find(f => {
+      const normalizedName = normalizeText(f.name);
+      return normalizedName.includes('responsavel') || 
+             normalizedName.includes('coordenacao responsavel');
+    });
+
+    const responsavelField = priorityField || fallbackField;
     
     // userId null = search for cards with empty responsible field
     if (userId === null) {
-      // Card sem o campo "Responsável" = sem responsável
-      if (!responsavelField) return true;
+      const fieldValues = responsavelField ? parseResponsibleFieldValue(responsavelField.value) : [];
       
-      // Card com campo vazio = sem responsável
-      const fieldValues = parseResponsibleFieldValue(responsavelField.value);
+      // Debug log para busca "sem responsável"
+      console.log(`[Pipefy DEBUG] Card "${card.title}" (sem responsável):`, {
+        campoEncontrado: responsavelField?.name || 'NENHUM',
+        valorBruto: responsavelField?.value,
+        valoresParsed: fieldValues,
+        resultadoFiltro: fieldValues.length === 0
+      });
+      
+      // Card sem campo ou com campo vazio = sem responsável
       return fieldValues.length === 0;
     }
     
