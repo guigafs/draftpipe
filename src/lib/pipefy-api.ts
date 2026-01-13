@@ -412,11 +412,16 @@ export async function searchCardsByResponsibleField(
 ): Promise<PipefyCard[]> {
   let activePhases: PipefyPhaseWithDone[];
 
+  // CACHE DE FASES TEMPORARIAMENTE DESABILITADO - sempre buscar da API
+  const DISABLE_PHASE_CACHE = true;
+
   // Use cached phases if available, otherwise fetch from API
-  if (cachedPhases && cachedPhases.length > 0) {
+  if (!DISABLE_PHASE_CACHE && cachedPhases && cachedPhases.length > 0) {
     activePhases = cachedPhases.filter(phase => !phase.done);
+    console.log('[Pipefy] Usando fases do cache:', activePhases.map(p => ({ id: p.id, name: p.name, done: p.done })));
   } else {
-    // Fallback: fetch phases from API
+    // Fetch phases from API (sempre executado quando DISABLE_PHASE_CACHE = true)
+    console.log('[Pipefy] Buscando fases da API para pipe', pipeId);
     const phasesQuery = `
       query($pipeId: ID!) {
         pipe(id: $pipeId) {
@@ -441,8 +446,20 @@ export async function searchCardsByResponsibleField(
       };
     }>(token, phasesQuery, { pipeId });
 
+    console.log('[Pipefy] Fases da API:', phasesData.pipe.phases.map(p => ({
+      id: p.id,
+      name: p.name,
+      done: p.done
+    })));
+
     activePhases = phasesData.pipe.phases.filter(phase => !phase.done);
   }
+
+  console.log('[Pipefy] Fases ativas para busca:', {
+    pipeId,
+    totalFases: activePhases.length,
+    fases: activePhases.map(p => ({ id: p.id, name: p.name }))
+  });
 
   const totalPhases = activePhases.length;
   const allCards: PipefyCard[] = [];
@@ -459,6 +476,7 @@ export async function searchCardsByResponsibleField(
     onProgress?.(i + 1, totalPhases, phase.name, allCards.length);
 
     const phaseCards = await fetchAllCardsFromPhase(token, phase.id, signal);
+    console.log(`[Pipefy] Fase "${phase.name}": ${phaseCards.length} cards encontrados`);
     allCards.push(...phaseCards);
   }
 

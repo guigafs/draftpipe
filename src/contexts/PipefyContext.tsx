@@ -246,8 +246,11 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     try {
       const keys = await getCacheKeys('pipes_cache');
 
+      // CACHE TEMPORARIAMENTE DESABILITADO - sempre buscar da API
+      const DISABLE_PIPES_CACHE = true;
+      
       // Try to load from cache first
-      if (!forceRefresh) {
+      if (!forceRefresh && !DISABLE_PIPES_CACHE) {
         // Build select columns dynamically
         const selectCols = keys.updatedAtCol 
           ? `${keys.dataCol}, ${keys.updatedAtCol}` 
@@ -393,8 +396,11 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
     try {
       const keys = await getCacheKeys('members_cache');
 
+      // CACHE TEMPORARIAMENTE DESABILITADO - sempre buscar da API
+      const DISABLE_MEMBERS_CACHE = true;
+      
       // Try to load from cache first
-      if (!forceRefresh) {
+      if (!forceRefresh && !DISABLE_MEMBERS_CACHE) {
         // Build select columns dynamically
         const selectCols = keys.updatedAtCol 
           ? `${keys.dataCol}, ${keys.updatedAtCol}` 
