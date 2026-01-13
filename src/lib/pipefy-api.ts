@@ -769,6 +769,9 @@ async function batchUpdateCards(
     // Format value as JSON array of IDs for Pipefy connection field
     const valueStr = JSON.stringify(update.newFieldValue);
     
+    // Log mutation details for debugging
+    console.log(`[Pipefy] Mutation field_${index}: card ${update.cardId}, fieldId ${update.fieldId}, new_value ${valueStr}`);
+    
     return `
     field_${index}: updateCardField(input: {card_id: "${update.cardId}", field_id: "${update.fieldId}", new_value: ${valueStr}}) {
       success
@@ -826,7 +829,12 @@ async function batchUpdateCards(
         const cardError = data.errors?.find((e: { path?: string[]; message: string }) => 
           e.path?.includes(key)
         );
-        console.error(`[Pipefy] Card ${cardId}: Erro ao atualizar campo`, cardError);
+        // Log ALL errors for this card
+        const allCardErrors = data.errors?.filter((e: { path?: string[]; message: string }) => e.path?.includes(key)) || [];
+        console.error(`[Pipefy] Card ${cardId}: Falha ao atualizar. Erro principal:`, cardError);
+        if (allCardErrors.length > 1) {
+          console.error(`[Pipefy] Card ${cardId}: Erros adicionais (${allCardErrors.length - 1}):`, allCardErrors.slice(1));
+        }
         results.failed.push({
           cardId,
           error: cardError?.message || 'Erro ao atualizar campo "Responsável"'
@@ -863,6 +871,64 @@ async function batchUpdateCards(
   return results;
 }
 
+/**
+ * Normalizes responsible field values to only numeric user IDs.
+ * - Keeps values that are already numeric IDs (e.g., "306631269")
+ * - Maps names to IDs using the members list (e.g., "Planejamento BHZ" -> "306631269")
+ * - Drops values that cannot be mapped
+ */
+function normalizeResponsibleValues(
+  currentValues: string[],
+  members: PipefyMember[],
+  sourceUserId: string,
+  sourceUserName: string
+): { normalizedIds: string[]; droppedValues: string[] } {
+  const normalizedIds: string[] = [];
+  const droppedValues: string[] = [];
+  
+  // Build name-to-ID map for fast lookup
+  const nameToIdMap = new Map<string, string>();
+  for (const member of members) {
+    const normalized = normalizeText(member.user.name);
+    nameToIdMap.set(normalized, member.user.id);
+  }
+  
+  const normalizedSourceName = normalizeText(sourceUserName);
+  
+  for (const value of currentValues) {
+    // Skip source user by ID
+    if (value === sourceUserId) continue;
+    
+    // Skip source user by name (normalized)
+    const normalizedValue = normalizeText(value);
+    if (normalizedSourceName && (
+      normalizedValue === normalizedSourceName ||
+      normalizedValue.includes(normalizedSourceName) ||
+      normalizedSourceName.includes(normalizedValue)
+    )) {
+      continue;
+    }
+    
+    // If already a numeric ID, keep it
+    if (/^\d+$/.test(value)) {
+      normalizedIds.push(value);
+      continue;
+    }
+    
+    // Try to map name to ID
+    const mappedId = nameToIdMap.get(normalizedValue);
+    if (mappedId) {
+      normalizedIds.push(mappedId);
+      console.log(`[Pipefy] Mapeado "${value}" -> ID ${mappedId}`);
+    } else {
+      droppedValues.push(value);
+      console.warn(`[Pipefy] Valor "${value}" não é ID numérico e não foi mapeado para usuário conhecido`);
+    }
+  }
+  
+  return { normalizedIds, droppedValues };
+}
+
 // Progress callback for batch transfer
 export type BatchTransferProgressCallback = (
   completedBatches: number,
@@ -881,6 +947,7 @@ export async function transferCards(
   newResponsibleName: string, // Name of new responsible user (used for field update)
   cards: PipefyCard[],
   pipes: PipefyPipe[], // Used to get field_id fallback from pipe definition
+  members: PipefyMember[], // Used to normalize names to IDs
   batchSize: number = 50,
   onProgress?: BatchTransferProgressCallback,
   inviteOptions?: InviteOptions
@@ -890,9 +957,6 @@ export async function transferCards(
     failed: [] as { cardId: string; error: string }[],
     userInvited: false,
   };
-
-  // Normalize source user name for comparison
-  const normalizedSourceName = normalizeText(sourceUserName);
 
   // Build phase -> fieldId index for cards without the field in payload
   const phaseFieldIndex = buildPhaseResponsibleFieldIndex(pipes);
@@ -950,29 +1014,25 @@ export async function transferCards(
       }
 
       if (fieldId) {
-        // Remove source user by ID OR by name (normalized)
-        const filteredValues = currentValues.filter(value => {
-          // Skip if it's the source user ID
-          if (value === sourceUserId) return false;
-          
-          // Also check if it matches the source user's name
-          if (normalizedSourceName) {
-            const normalizedValue = normalizeText(value);
-            if (normalizedValue === normalizedSourceName) return false;
-            if (normalizedValue.includes(normalizedSourceName)) return false;
-            if (normalizedSourceName.includes(normalizedValue)) return false;
-          }
-          
-          return true;
-        });
+        // Normalize current values to IDs only (removes source user automatically)
+        const { normalizedIds, droppedValues } = normalizeResponsibleValues(
+          currentValues,
+          members,
+          sourceUserId,
+          sourceUserName
+        );
         
-        // Add new responsible ID (API requires IDs, not names)
-        const updatedValues = [...filteredValues, newResponsibleId];
+        if (droppedValues.length > 0) {
+          console.warn(`[Pipefy] Card ${cardId}: ${droppedValues.length} valor(es) descartado(s): [${droppedValues.join(', ')}]`);
+        }
+        
+        // Add new responsible ID
+        const updatedValues = [...normalizedIds, newResponsibleId];
         
         // Remove duplicates
         const uniqueValues = [...new Set(updatedValues)];
         
-        console.log(`[Pipefy] Card ${cardId}: Valores anteriores: [${currentValues.join(', ')}] -> Novos valores: [${uniqueValues.join(', ')}]`);
+        console.log(`[Pipefy] Card ${cardId}: [${currentValues.join(', ')}] -> [${uniqueValues.join(', ')}] (somente IDs)`);
         
         fieldUpdates.push({
           cardId,

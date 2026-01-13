@@ -32,7 +32,7 @@ interface ProgressItem {
 }
 
 export default function Responsaveis() {
-  const { isConnected, isLoading, token, pipes, addHistoryRecord } = usePipefy();
+  const { isConnected, isLoading, token, pipes, members, addHistoryRecord } = usePipefy();
 
   // UI State
   const [helpOpen, setHelpOpen] = useState(false);
@@ -161,6 +161,7 @@ export default function Responsaveis() {
       selectedToUser.user.name,
       selectedCards,
       selectedPipes,
+      members,
       batchSize,
       (completed, total, batchResults) => {
         setCompletedBatches(completed);
