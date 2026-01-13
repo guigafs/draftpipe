@@ -277,6 +277,19 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
           // If no timestamp column, treat cache as expired (always fetch fresh)
           const cacheValid = keys.updatedAtCol ? isCacheValid(updatedAtRaw) : false;
           
+          const cachedData = (cached as any)[keys.dataCol] as PipefyPipe[] | undefined;
+          console.log('[Cache] Dados carregados do pipes_cache:', {
+            pipesCount: cachedData?.length || 0,
+            totalPhases: cachedData?.reduce((acc, p) => acc + (p.phases?.length || 0), 0) || 0,
+            updatedAt: updatedAtRaw,
+            cacheValid: cacheValid,
+            primeiroPipe: cachedData?.[0] ? {
+              id: cachedData[0].id,
+              name: cachedData[0].name,
+              phasesCount: cachedData[0].phases?.length || 0
+            } : null
+          });
+          
           if (cacheValid) {
             const pipesData = ((cached as any)[keys.dataCol] ?? []) as PipefyPipe[];
             setPipes(pipesData);
@@ -290,6 +303,18 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       const pipesData = await fetchPipes(tokenValue, orgId);
       setPipes(pipesData);
 
+      // Log dos dados da API
+      console.log('[Cache] Dados da API Pipefy:', {
+        pipesCount: pipesData.length,
+        totalPhases: pipesData.reduce((acc, p) => acc + (p.phases?.length || 0), 0),
+        primeiroPipe: pipesData[0] ? {
+          id: pipesData[0].id,
+          name: pipesData[0].name,
+          phasesCount: pipesData[0].phases?.length || 0,
+          phases: pipesData[0].phases?.map(p => p.name)
+        } : null
+      });
+
       // Save to cache (best-effort)
       const now = new Date();
       const payload: any = {
@@ -302,12 +327,41 @@ export function PipefyProvider({ children }: { children: React.ReactNode }) {
       }
       if (keys.orgCol) payload[keys.orgCol] = orgId;
 
+      // Log do payload antes de salvar
+      console.log('[Cache] Payload para salvar no pipes_cache:', {
+        userId: authUser.id,
+        orgId,
+        pipesCount: pipesData.length,
+        hasPhases: pipesData.some(p => (p.phases?.length || 0) > 0),
+        keys,
+        payloadSizeKB: Math.round(JSON.stringify(payload).length / 1024)
+      });
+
       const upsertOptions = keys.onConflict ? ({ onConflict: keys.onConflict } as any) : undefined;
-      let { error: upsertError } = await supabase.from('pipes_cache').upsert(payload, upsertOptions);
+      console.log('[Cache] Opções upsert:', upsertOptions);
+
+      let { error: upsertError, data: upsertData } = await supabase
+        .from('pipes_cache')
+        .upsert(payload, upsertOptions)
+        .select();
+
+      // Log do resultado do upsert
+      console.log('[Cache] Resultado do upsert pipes_cache:', {
+        success: !upsertError,
+        error: upsertError,
+        dataReturned: !!upsertData,
+        rowsAffected: upsertData?.length || 0
+      });
 
       // If there's no matching unique constraint for onConflict, fall back to insert.
       if (upsertError && /unique|ON CONFLICT/i.test((upsertError as any).message ?? '')) {
-        ({ error: upsertError } = await supabase.from('pipes_cache').insert(payload));
+        console.log('[Cache] Tentando insert como fallback...');
+        const insertResult = await supabase.from('pipes_cache').insert(payload).select();
+        upsertError = insertResult.error;
+        console.log('[Cache] Resultado do insert fallback:', {
+          success: !insertResult.error,
+          error: insertResult.error
+        });
       }
 
       if (upsertError) {
