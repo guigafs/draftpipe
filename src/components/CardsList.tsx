@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { PipefyCard, PipefyCardField, parseResponsibleFieldValue } from '@/lib/pipefy-api';
+import { PipefyCard, PipefyCardField } from '@/lib/pipefy-api';
 import { cn } from '@/lib/utils';
 import { CardFilters, CardFiltersState, parseFieldValue, isClienteField, isDisciplinaField } from './CardFilters';
 
@@ -319,38 +319,32 @@ export function CardsList({ cards, selectedIds, onSelectionChange, isLoading }: 
                     );
                   })()}
 
-                  {/* Mostrar usuários do campo Responsável */}
-                  {(() => {
-                    const normalizeText = (text: string): string => {
-                      return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    };
-                    const responsavelField = card.fields?.find(f => {
-                      const normalizedName = normalizeText(f.name);
-                      return normalizedName.includes('responsavel');
-                    });
-                    const responsibleValues = responsavelField?.value 
-                      ? parseResponsibleFieldValue(responsavelField.value)
-                      : [];
-                    
-                    if (responsibleValues.length === 0) return null;
-                    
-                    return (
-                      <div className="flex items-center gap-2 mt-3">
-                        <User className="h-3.5 w-3.5 text-muted-foreground" />
-                        <div className="flex flex-wrap gap-1">
-                          {responsibleValues.map((value, index) => (
-                            <Badge
-                              key={`${value}-${index}`}
-                              variant="secondary"
-                              className="text-xs"
-                            >
-                              {value}
-                            </Badge>
-                          ))}
-                        </div>
+                  {/* Mostrar responsáveis da fase atual (assignees) */}
+                  {card.assignees && card.assignees.length > 0 && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Responsável:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {card.assignees.map((assignee) => (
+                          <Badge
+                            key={assignee.id}
+                            variant="secondary"
+                            className="text-xs"
+                          >
+                            {assignee.name}
+                          </Badge>
+                        ))}
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
+
+                  {/* Mostrar "Sem responsável" quando não há assignees */}
+                  {(!card.assignees || card.assignees.length === 0) && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <User className="h-3.5 w-3.5 text-muted-foreground opacity-50" />
+                      <span className="text-xs text-muted-foreground italic">Sem responsável</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
