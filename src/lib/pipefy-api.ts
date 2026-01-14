@@ -372,7 +372,7 @@ export function parseResponsibleFieldValue(value: string | null): string[] {
 
 // Build an index of phaseId -> responsibleFieldId from pipe phase definitions
 // This is used when a card doesn't have the "Responsável" field in its payload
-function buildPhaseResponsibleFieldIndex(pipes: PipefyPipe[]): Map<string, string> {
+export function buildPhaseResponsibleFieldIndex(pipes: PipefyPipe[]): Map<string, string> {
   const index = new Map<string, string>();
   
   for (const pipe of pipes) {

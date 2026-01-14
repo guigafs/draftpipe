@@ -17,7 +17,8 @@ import {
   InviteOptions, 
   parseResponsibleFieldValue,
   fetchCardDetails,
-  fetchMultipleCardDetails
+  fetchMultipleCardDetails,
+  buildPhaseResponsibleFieldIndex
 } from '@/lib/pipefy-api';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -241,9 +242,22 @@ export default function Responsaveis() {
         const verifiedCard = verifiedCards.get(card.id);
         
         if (verifiedCard) {
-          const responsavelField = verifiedCard.fields?.find((f) =>
-            f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
-          );
+          // Use field_id from phase index (same logic as transfer)
+          const phaseId = verifiedCard.current_phase?.id;
+          let correctFieldId: string | null = null;
+          
+          if (phaseId) {
+            const phaseFieldIndex = buildPhaseResponsibleFieldIndex(selectedPipes);
+            correctFieldId = phaseFieldIndex.get(phaseId) || null;
+          }
+          
+          // Find field by field_id first (more reliable), fallback to name search
+          const responsavelField = correctFieldId 
+            ? verifiedCard.fields?.find(f => f.field_id === correctFieldId)
+            : verifiedCard.fields?.find((f) =>
+                f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
+              );
+          
           const currentValues = responsavelField?.value 
             ? parseResponsibleFieldValue(responsavelField.value) 
             : [];
@@ -348,10 +362,23 @@ export default function Responsaveis() {
       return;
     }
 
-    // Find "Responsável" field in updated card
-    const responsavelField = updatedCard.fields?.find((f) =>
-      f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
-    );
+    // Use field_id from phase index (same logic as transfer)
+    const phaseId = updatedCard.current_phase?.id;
+    let correctFieldId: string | null = null;
+    
+    if (phaseId) {
+      const selectedPipes = pipes.filter(p => pipeIds.includes(p.id));
+      const phaseFieldIndex = buildPhaseResponsibleFieldIndex(selectedPipes);
+      correctFieldId = phaseFieldIndex.get(phaseId) || null;
+    }
+    
+    // Find field by field_id first (more reliable), fallback to name search
+    const responsavelField = correctFieldId 
+      ? updatedCard.fields?.find(f => f.field_id === correctFieldId)
+      : updatedCard.fields?.find((f) =>
+          f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('responsavel')
+        );
+    
     const currentValues = responsavelField?.value ? parseResponsibleFieldValue(responsavelField.value) : [];
 
     // Check if new responsible is in the values
