@@ -792,11 +792,6 @@ async function batchUpdateCards(
       card {
         id
         title
-        fields {
-          field_id
-          name
-          value
-        }
       }
     }`;
   }).join('\n');
