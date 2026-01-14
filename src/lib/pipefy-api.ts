@@ -488,58 +488,34 @@ export async function searchCardsByResponsibleField(
   // Final progress update
   onProgress?.(totalPhases, totalPhases, 'Filtrando resultados...', allCards.length);
 
-  // Filter by "Responsável" field value (ID or name)
+  // Filter by native assignees (responsáveis da fase atual)
   const normalizedUserName = userName ? normalizeText(userName) : null;
   
   const filteredCards = allCards.filter(card => {
-    // Prioridade: "responsavel pela fase" primeiro, depois qualquer "responsavel"
-    const priorityField = card.fields?.find(f => {
-      const normalizedName = normalizeText(f.name);
-      return normalizedName.includes('responsavel pela fase');
-    });
-
-    const fallbackField = card.fields?.find(f => {
-      const normalizedName = normalizeText(f.name);
-      return normalizedName.includes('responsavel') || 
-             normalizedName.includes('coordenacao responsavel');
-    });
-
-    const responsavelField = priorityField || fallbackField;
+    // Usar assignees nativos do card (responsáveis da fase atual)
+    const assignees = card.assignees || [];
     
-    // userId null = search for cards with empty responsible field
+    // userId null = busca cards SEM responsável (assignees vazio)
     if (userId === null) {
-      const fieldValues = responsavelField ? parseResponsibleFieldValue(responsavelField.value) : [];
-      
-      // Debug log para busca "sem responsável"
-      console.log(`[Pipefy DEBUG] Card "${card.title}" (sem responsável):`, {
-        campoEncontrado: responsavelField?.name || 'NENHUM',
-        valorBruto: responsavelField?.value,
-        valoresParsed: fieldValues,
-        resultadoFiltro: fieldValues.length === 0
+      console.log(`[Pipefy DEBUG] Card "${card.title}" (fase: ${card.current_phase?.name}):`, {
+        assigneesCount: assignees.length,
+        assignees: assignees.map(a => ({ id: a.id, name: a.name })),
+        resultadoFiltro: assignees.length === 0
       });
-      
-      // Card sem campo ou com campo vazio = sem responsável
-      return fieldValues.length === 0;
+      return assignees.length === 0;
     }
     
-    // Para busca por usuário específico, o campo deve existir
-    if (!responsavelField) return false;
-    
-    // Parse the field value as array of user IDs or names
-    const fieldValues = parseResponsibleFieldValue(responsavelField.value);
-    
-    // Check if any value matches the userId OR userName
-    return fieldValues.some(value => {
-      // Compare with ID directly
-      if (value === userId) return true;
+    // Busca por usuário específico via ID ou nome nos assignees
+    return assignees.some(assignee => {
+      // Match por ID
+      if (assignee.id === userId) return true;
       
-      // Compare with name (normalized, without accents)
+      // Match por nome (normalizado)
       if (normalizedUserName) {
-        const normalizedValue = normalizeText(value);
-        // Exact match or partial match for names
-        if (normalizedValue === normalizedUserName) return true;
-        if (normalizedValue.includes(normalizedUserName)) return true;
-        if (normalizedUserName.includes(normalizedValue)) return true;
+        const normalizedAssigneeName = normalizeText(assignee.name);
+        if (normalizedAssigneeName === normalizedUserName) return true;
+        if (normalizedAssigneeName.includes(normalizedUserName)) return true;
+        if (normalizedUserName.includes(normalizedAssigneeName)) return true;
       }
       
       return false;
