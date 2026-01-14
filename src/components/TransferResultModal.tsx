@@ -187,57 +187,59 @@ export function TransferResultModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-center">
-              <CheckCircle className="h-5 w-5 text-success mx-auto mb-1" />
-              <p className="text-xl font-semibold text-success">{confirmedItems.length}</p>
-              <p className="text-xs text-muted-foreground">Confirmados</p>
+        <ScrollArea className="max-h-[60vh] pr-4">
+          <div className="space-y-4 py-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-success/30 bg-success/5 p-3 text-center">
+                <CheckCircle className="h-5 w-5 text-success mx-auto mb-1" />
+                <p className="text-xl font-semibold text-success">{confirmedItems.length}</p>
+                <p className="text-xs text-muted-foreground">Confirmados</p>
+              </div>
+              <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-center">
+                <AlertTriangle className="h-5 w-5 text-warning mx-auto mb-1" />
+                <p className="text-xl font-semibold text-warning">{alertItems.length}</p>
+                <p className="text-xs text-muted-foreground">Alertas</p>
+              </div>
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-center">
+                <XCircle className="h-5 w-5 text-destructive mx-auto mb-1" />
+                <p className="text-xl font-semibold text-destructive">{errorItems.length}</p>
+                <p className="text-xs text-muted-foreground">Erros</p>
+              </div>
             </div>
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-center">
-              <AlertTriangle className="h-5 w-5 text-warning mx-auto mb-1" />
-              <p className="text-xl font-semibold text-warning">{alertItems.length}</p>
-              <p className="text-xs text-muted-foreground">Alertas</p>
-            </div>
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-center">
-              <XCircle className="h-5 w-5 text-destructive mx-auto mb-1" />
-              <p className="text-xl font-semibold text-destructive">{errorItems.length}</p>
-              <p className="text-xs text-muted-foreground">Erros</p>
-            </div>
-          </div>
 
-          {/* Sections */}
-          <div className="space-y-2">
-            {renderSection(
-              'Confirmados',
-              confirmedItems,
-              'confirmed',
-              <CheckCircle className="h-4 w-4 text-success" />,
-              'text-success',
-              'bg-success/5 hover:bg-success/10',
-              'border-success/30'
-            )}
-            {renderSection(
-              'Alertas (verificar)',
-              alertItems,
-              'alert',
-              <AlertTriangle className="h-4 w-4 text-warning" />,
-              'text-warning',
-              'bg-warning/5 hover:bg-warning/10',
-              'border-warning/30'
-            )}
-            {renderSection(
-              'Erros',
-              errorItems,
-              'error',
-              <XCircle className="h-4 w-4 text-destructive" />,
-              'text-destructive',
-              'bg-destructive/5 hover:bg-destructive/10',
-              'border-destructive/30'
-            )}
+            {/* Sections */}
+            <div className="space-y-2">
+              {renderSection(
+                'Confirmados',
+                confirmedItems,
+                'confirmed',
+                <CheckCircle className="h-4 w-4 text-success" />,
+                'text-success',
+                'bg-success/5 hover:bg-success/10',
+                'border-success/30'
+              )}
+              {renderSection(
+                'Alertas (verificar)',
+                alertItems,
+                'alert',
+                <AlertTriangle className="h-4 w-4 text-warning" />,
+                'text-warning',
+                'bg-warning/5 hover:bg-warning/10',
+                'border-warning/30'
+              )}
+              {renderSection(
+                'Erros',
+                errorItems,
+                'error',
+                <XCircle className="h-4 w-4 text-destructive" />,
+                'text-destructive',
+                'bg-destructive/5 hover:bg-destructive/10',
+                'border-destructive/30'
+              )}
+            </div>
           </div>
-        </div>
+        </ScrollArea>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <div className="flex gap-2 flex-1">
